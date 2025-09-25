@@ -14,10 +14,6 @@ internal class ClientAddonNetworkReceiver {
     /// </summary>
     protected readonly ClientAddon ClientAddon;
 
-    /// <summary>
-    /// The packet manager used to register packet handlers for the addon.
-    /// </summary>
-    protected readonly PacketManager PacketManager;
 
     /// <summary>
     /// Dictionary containing packet handlers for this addon.
@@ -35,11 +31,9 @@ internal class ClientAddonNetworkReceiver {
     protected byte PacketIdSize;
 
     protected ClientAddonNetworkReceiver(
-        ClientAddon clientAddon,
-        PacketManager packetManager
+        ClientAddon clientAddon
     ) {
         ClientAddon = clientAddon;
-        PacketManager = packetManager;
 
         PacketHandlers = new Dictionary<byte, ClientPacketHandler>();
     }
@@ -83,9 +77,8 @@ internal class ClientAddonNetworkReceiver<TPacketId> :
     private readonly BiLookup<TPacketId, byte> _packetIdLookup;
 
     public ClientAddonNetworkReceiver(
-        ClientAddon clientAddon,
-        PacketManager packetManager
-    ) : base(clientAddon, packetManager) {
+        ClientAddon clientAddon
+    ) : base(clientAddon) {
         _packetIdLookup = AddonNetworkTransmitter.ConstructPacketIdLookup<TPacketId>();
     }
 

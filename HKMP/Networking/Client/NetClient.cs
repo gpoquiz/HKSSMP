@@ -21,10 +21,6 @@ internal delegate void OnReceive(List<Packet.Packet> receivedPackets);
 /// manages client side networking, e.g. sending to and receiving from the server.
 /// </summary>
 internal class NetClient : INetClient {
-    /// <summary>
-    /// The packet manager instance.
-    /// </summary>
-    private readonly PacketManager _packetManager;
 
     /// <summary>
     /// The underlying UDP net client for networking.
@@ -74,9 +70,8 @@ internal class NetClient : INetClient {
     /// <summary>
     /// Construct the net client with the given packet manager.
     /// </summary>
-    /// <param name="packetManager">The packet manager instance.</param>
-    public NetClient(PacketManager packetManager) {
-        _packetManager = packetManager;
+    /// <param name="PacketManager">The packet manager instance.</param>
+    public NetClient() {
 
         _udpNetClient = new UdpNetClient();
 
@@ -189,7 +184,7 @@ internal class NetClient : INetClient {
                 }
             }
 
-            _packetManager.HandleClientPacket(clientUpdatePacket);
+            PacketManager.HandleClientPacket(clientUpdatePacket);
         }
     }
 
@@ -259,7 +254,7 @@ internal class NetClient : INetClient {
         _updateTaskTokenSource.Cancel();
 
         // Clear all client addon packet handlers, because their IDs become invalid
-        _packetManager.ClearClientAddonPacketHandlers();
+        PacketManager.ClearClientAddonPacketHandlers();
 
         // Invoke callback if it exists
         DisconnectEvent?.Invoke();
@@ -319,7 +314,7 @@ internal class NetClient : INetClient {
 
         // Check whether an existing network receiver exists
         if (addon.NetworkReceiver == null) {
-            networkReceiver = new ClientAddonNetworkReceiver<TPacketId>(addon, _packetManager);
+            networkReceiver = new ClientAddonNetworkReceiver<TPacketId>(addon);
             addon.NetworkReceiver = networkReceiver;
         } else if (!(addon.NetworkReceiver is IClientAddonNetworkReceiver<TPacketId>)) {
             throw new InvalidOperationException(

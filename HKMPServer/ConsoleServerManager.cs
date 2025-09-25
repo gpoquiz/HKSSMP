@@ -19,9 +19,8 @@ namespace HkmpServer {
         public ConsoleServerManager(
             NetServer netServer,
             ServerSettings serverSettings,
-            PacketManager packetManager,
             ConsoleLogger consoleLogger
-        ) : base(netServer, serverSettings, packetManager) {
+        ) : base(netServer, serverSettings) {
             _consoleLogger = consoleLogger;
             
             // Start loading addons

@@ -27,17 +27,11 @@ internal class ServerAddonNetworkReceiver<TPacketId> :
     /// </summary>
     private readonly ServerAddon _serverAddon;
 
-    /// <summary>
-    /// The packet manager used to register packet handlers for the addon.
-    /// </summary>
-    private readonly PacketManager _packetManager;
 
     public ServerAddonNetworkReceiver(
-        ServerAddon serverAddon,
-        PacketManager packetManager
+        ServerAddon serverAddon
     ) {
         _serverAddon = serverAddon;
-        _packetManager = packetManager;
     }
 
     /// <inheritdoc/>
@@ -51,7 +45,7 @@ internal class ServerAddonNetworkReceiver<TPacketId> :
             throw new InvalidOperationException(NoAddonIdMsg);
         }
 
-        _packetManager.RegisterServerAddonPacketHandler(
+        PacketManager.RegisterServerAddonPacketHandler(
             _serverAddon.Id.Value,
             idValue,
             (id, _) => handler(id)
@@ -70,7 +64,7 @@ internal class ServerAddonNetworkReceiver<TPacketId> :
             throw new InvalidOperationException(NoAddonIdMsg);
         }
 
-        _packetManager.RegisterServerAddonPacketHandler(
+        PacketManager.RegisterServerAddonPacketHandler(
             _serverAddon.Id.Value,
             idValue,
             (id, iPacketData) => handler(id, (TPacketData) iPacketData)
@@ -88,7 +82,7 @@ internal class ServerAddonNetworkReceiver<TPacketId> :
             throw new InvalidOperationException(NoAddonIdMsg);
         }
 
-        _packetManager.DeregisterServerAddonPacketHandler(_serverAddon.Id.Value, idValue);
+        PacketManager.DeregisterServerAddonPacketHandler(_serverAddon.Id.Value, idValue);
     }
 
     /// <summary>

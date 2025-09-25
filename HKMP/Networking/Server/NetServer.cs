@@ -37,11 +37,6 @@ internal class NetServer : INetServer {
     private const int ThrottleTime = 2500;
 
     /// <summary>
-    /// The packet manager instance.
-    /// </summary>
-    private readonly PacketManager _packetManager;
-
-    /// <summary>
     /// Object to lock asynchronous access when dealing with clients.
     /// </summary>
     private readonly object _clientLock = new object();
@@ -104,8 +99,7 @@ internal class NetServer : INetServer {
     /// <inheritdoc />
     public bool IsStarted { get; private set; }
 
-    public NetServer(PacketManager packetManager) {
-        _packetManager = packetManager;
+    public NetServer() {
 
         _registeredClients = new ConcurrentDictionary<ushort, NetServerClient>();
         _clients = new ConcurrentDictionary<IPEndPoint, NetServerClient>();
@@ -297,7 +291,7 @@ internal class NetServer : INetServer {
             client.UpdateManager.OnReceivePacket<ServerUpdatePacket, ServerPacketId>(serverUpdatePacket);
 
             // Let the packet manager handle the received data
-            _packetManager.HandleServerPacket(id, serverUpdatePacket);
+            PacketManager.HandleServerPacket(id, serverUpdatePacket);
         }
     }
 
@@ -506,7 +500,7 @@ internal class NetServer : INetServer {
 
         // Check whether an existing network receiver exists
         if (addon.NetworkReceiver == null) {
-            networkReceiver = new ServerAddonNetworkReceiver<TPacketId>(addon, _packetManager);
+            networkReceiver = new ServerAddonNetworkReceiver<TPacketId>(addon);
             addon.NetworkReceiver = networkReceiver;
         } else if (!(addon.NetworkReceiver is IServerAddonNetworkReceiver<TPacketId>)) {
             throw new InvalidOperationException(

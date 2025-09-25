@@ -16,9 +16,8 @@ internal class ModServerManager : ServerManager {
     private static ServerManager _currentServer;
     public ModServerManager(
         NetServer netServer,
-        ServerSettings serverSettings,
-        PacketManager packetManager
-    ) : base(netServer, serverSettings, packetManager) {
+        ServerSettings serverSettings
+    ) : base(netServer, serverSettings) {
         _currentServer = this;
         // Start addon loading once all mods have finished loading
 

@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
+using HarmonyLib;
 using Hkmp.Animation;
 using Hkmp.Api.Command.Server;
 using Hkmp.Api.Eventing.ServerEvents;
@@ -16,6 +12,11 @@ using Hkmp.Logging;
 using Hkmp.Networking.Packet;
 using Hkmp.Networking.Packet.Data;
 using Hkmp.Networking.Server;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 
 namespace Hkmp.Game.Server;
 
@@ -108,11 +109,9 @@ internal abstract class ServerManager : IServerManager {
     /// </summary>
     /// <param name="netServer">The net server instance.</param>
     /// <param name="serverSettings">The server settings.</param>
-    /// <param name="packetManager">The packet manager instance.</param>
     protected ServerManager(
         NetServer netServer,
-        ServerSettings serverSettings,
-        PacketManager packetManager
+        ServerSettings serverSettings
     ) {
         _netServer = netServer;
         InternalServerSettings = serverSettings;
@@ -130,21 +129,21 @@ internal abstract class ServerManager : IServerManager {
         _banList = BanList.LoadFromFile();
 
         // Register packet handlers
-        packetManager.RegisterServerPacketHandler<HelloServer>(ServerPacketId.HelloServer, OnHelloServer);
-        packetManager.RegisterServerPacketHandler<ServerPlayerEnterScene>(ServerPacketId.PlayerEnterScene,
+        PacketManager.RegisterServerPacketHandler<HelloServer>(ServerPacketId.HelloServer, OnHelloServer);
+        PacketManager.RegisterServerPacketHandler<ServerPlayerEnterScene>(ServerPacketId.PlayerEnterScene,
             OnClientEnterScene);
-        packetManager.RegisterServerPacketHandler(ServerPacketId.PlayerLeaveScene, OnClientLeaveScene);
-        packetManager.RegisterServerPacketHandler<PlayerUpdate>(ServerPacketId.PlayerUpdate, OnPlayerUpdate);
-        packetManager.RegisterServerPacketHandler<PlayerMapUpdate>(ServerPacketId.PlayerMapUpdate,
+        PacketManager.RegisterServerPacketHandler(ServerPacketId.PlayerLeaveScene, OnClientLeaveScene);
+        PacketManager.RegisterServerPacketHandler<PlayerUpdate>(ServerPacketId.PlayerUpdate, OnPlayerUpdate);
+        PacketManager.RegisterServerPacketHandler<PlayerMapUpdate>(ServerPacketId.PlayerMapUpdate,
             OnPlayerMapUpdate);
-        packetManager.RegisterServerPacketHandler<EntityUpdate>(ServerPacketId.EntityUpdate, OnEntityUpdate);
-        packetManager.RegisterServerPacketHandler(ServerPacketId.PlayerDisconnect, OnPlayerDisconnect);
-        packetManager.RegisterServerPacketHandler(ServerPacketId.PlayerDeath, OnPlayerDeath);
-        packetManager.RegisterServerPacketHandler<ServerPlayerTeamUpdate>(ServerPacketId.PlayerTeamUpdate,
+        PacketManager.RegisterServerPacketHandler<EntityUpdate>(ServerPacketId.EntityUpdate, OnEntityUpdate);
+        PacketManager.RegisterServerPacketHandler(ServerPacketId.PlayerDisconnect, OnPlayerDisconnect);
+        PacketManager.RegisterServerPacketHandler(ServerPacketId.PlayerDeath, OnPlayerDeath);
+        PacketManager.RegisterServerPacketHandler<ServerPlayerTeamUpdate>(ServerPacketId.PlayerTeamUpdate,
             OnPlayerTeamUpdate);
-        packetManager.RegisterServerPacketHandler<ServerPlayerSkinUpdate>(ServerPacketId.PlayerSkinUpdate,
+        PacketManager.RegisterServerPacketHandler<ServerPlayerSkinUpdate>(ServerPacketId.PlayerSkinUpdate,
             OnPlayerSkinUpdate);
-        packetManager.RegisterServerPacketHandler<ChatMessage>(ServerPacketId.ChatMessage, OnChatMessage);
+        PacketManager.RegisterServerPacketHandler<ChatMessage>(ServerPacketId.ChatMessage, OnChatMessage);
 
         // Register a timeout handler
         _netServer.ClientTimeoutEvent += OnClientTimeout;
