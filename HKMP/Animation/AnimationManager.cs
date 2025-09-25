@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using GlobalEnums;
+using HarmonyLib;
 using Hkmp.Animation.Effects;
 using Hkmp.Collection;
 using Hkmp.Fsm;
@@ -14,7 +15,6 @@ using Hkmp.Networking.Packet;
 using Hkmp.Networking.Packet.Data;
 using Hkmp.Util;
 using HutongGames.PlayMaker.Actions;
-using Modding;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Logger = Hkmp.Logging.Logger;
@@ -24,7 +24,7 @@ namespace Hkmp.Animation;
 /// <summary>
 /// Class that manages all forms of animation from clients.
 /// </summary>
-internal class AnimationManager {
+internal static class AnimationManager {
     /// <summary>
     /// The distance threshold for playing certain effects.
     /// </summary>
@@ -41,12 +41,6 @@ internal class AnimationManager {
     private static readonly string[] AnimationControllerClipNames = {
         "Airborne"
     };
-
-    /// <summary>
-    /// The animation effect for cancelling the Crystal Dash Charge. Stored since it needs to be called
-    /// manually sometimes.
-    /// </summary>
-    public static readonly CrystalDashChargeCancel CrystalDashChargeCancel = new CrystalDashChargeCancel();
 
     /// <summary>
     /// The animation effect for the focus. Stored since it needs to be called manually sometimes.
@@ -287,28 +281,11 @@ internal class AnimationManager {
     /// </summary>
     private static readonly Dictionary<AnimationClip, IAnimationEffect> AnimationEffects =
         new Dictionary<AnimationClip, IAnimationEffect> {
-            { AnimationClip.SDChargeGround, new CrystalDashGroundCharge() },
-            { AnimationClip.SDChargeGroundEnd, CrystalDashChargeCancel },
-            { AnimationClip.SDWallCharge, new CrystalDashWallCharge() },
-            { AnimationClip.SDDash, new CrystalDash() },
-            { AnimationClip.SDAirBrake, new CrystalDashAirCancel() },
-            { AnimationClip.SDHitWall, new CrystalDashHitWall() },
             { AnimationClip.Slash, new Slash() },
             { AnimationClip.SlashAlt, new AltSlash() },
             { AnimationClip.DownSlash, new DownSlash() },
             { AnimationClip.UpSlash, new UpSlash() },
             { AnimationClip.WallSlash, new WallSlash() },
-            { AnimationClip.Fireball1Cast, new VengefulSpirit() },
-            { AnimationClip.Fireball2Cast, new ShadeSoul() },
-            { AnimationClip.QuakeAntic, new DiveAntic() },
-            { AnimationClip.QuakeFall, new DesolateDiveDown() },
-            { AnimationClip.QuakeFall2, new DescendingDarkDown() },
-            { AnimationClip.QuakeLand, new DesolateDiveLand() },
-            { AnimationClip.QuakeLand2, new DescendingDarkLand() },
-            { AnimationClip.Scream, new HowlingWraiths() },
-            { AnimationClip.Scream2, new AbyssShriek() },
-            { AnimationClip.NACyclone, new CycloneSlash() },
-            { AnimationClip.NACycloneEnd, new CycloneSlashEnd() },
             { AnimationClip.NABigSlash, new GreatSlash() },
             { AnimationClip.NADashSlash, new DashSlash() },
             { AnimationClip.Stun, new Stun() },
@@ -324,10 +301,6 @@ internal class AnimationManager {
             { AnimationClip.SlugUp, FocusEnd },
             { AnimationClip.Dash, new Dash() },
             { AnimationClip.DashDown, new DashDown() },
-            { AnimationClip.ShadowDash, new ShadowDash() },
-            { AnimationClip.ShadowDashSharp, new ShadowDashSharp() },
-            { AnimationClip.ShadowDashDown, new ShadowDashDown() },
-            { AnimationClip.ShadowDashDownSharp, new ShadowDashSharpDown() },
             { AnimationClip.DashEnd, new DashEnd() },
             { AnimationClip.NailArtCharge, new NailArtCharge() },
             { AnimationClip.NailArtCharged, new NailArtCharged() },
@@ -338,125 +311,77 @@ internal class AnimationManager {
             { AnimationClip.DoubleJump, new MonarchWings() },
             { AnimationClip.HardLand, new HardLand() },
             { AnimationClip.HazardDeath, new HazardDeath() },
-            { AnimationClip.DungTrail, new DungTrail() },
-            { AnimationClip.DungTrailEnd, new DungTrailEnd() },
-            { AnimationClip.ThornAttack, new ThornsOfAgony() },
             { AnimationClip.SurfaceIn, new SurfaceIn() }
         };
-
     /// <summary>
     /// The net client for sending animation updates.
     /// </summary>
-    private readonly NetClient _netClient;
-
-    /// <summary>
-    /// The player manager to get player objects.
-    /// </summary>
-    private readonly PlayerManager _playerManager;
+    private static readonly NetClient _netClient;
 
     /// <summary>
     /// The last animation clip sent.
     /// </summary>
-    private string _lastAnimationClip;
+    private static string _lastAnimationClip;
 
     /// <summary>
     /// Whether the animation controller was responsible for the last clip that was sent.
     /// </summary>
-    private bool _animationControllerWasLastSent;
+    private static bool _animationControllerWasLastSent;
 
     /// <summary>
     /// Whether we should stop sending animations until the scene has changed.
     /// </summary>
-    private bool _stopSendingAnimationUntilSceneChange;
+    private static bool _stopSendingAnimationUntilSceneChange;
 
     /// <summary>
     /// Whether the current dash has ended and we can start a new one.
     /// </summary>
-    private bool _dashHasEnded = true;
+    private static bool _dashHasEnded = true;
 
     /// <summary>
     /// Whether the player has sent that they stopped crystal dashing.
     /// </summary>
-    private bool _hasSentCrystalDashEnd = true;
+    private static bool _hasSentCrystalDashEnd = true;
 
     /// <summary>
     /// Whether the charge effect was last update active.
     /// </summary>
-    private bool _lastChargeEffectActive;
+    private static bool _lastChargeEffectActive;
 
     /// <summary>
     /// Whether the charged effect was last update active
     /// </summary>
-    private bool _lastChargedEffectActive;
+    private static bool _lastChargedEffectActive;
 
     /// <summary>
     /// Stopwatch to keep track of a delay before being able to send another update for the charged effect.
     /// </summary>
-    private readonly Stopwatch _chargedEffectStopwatch;
+    private static readonly Stopwatch _chargedEffectStopwatch;
 
     /// <summary>
     /// Stopwatch to keep track of a delay before being able to send another update for the charged end effect.
     /// </summary>
-    private readonly Stopwatch _chargedEndEffectStopwatch;
+    private static readonly Stopwatch _chargedEndEffectStopwatch;
 
     /// <summary>
     /// Whether the player was wall sliding last update.
     /// </summary>
-    private bool _lastWallSlideActive;
+    private static bool _lastWallSlideActive;
 
-    public AnimationManager(
-        NetClient netClient,
-        PlayerManager playerManager,
-        PacketManager packetManager,
-        ServerSettings serverSettings
+    static AnimationManager(
     ) {
-        _netClient = netClient;
-        _playerManager = playerManager;
 
-        _chargedEffectStopwatch = new Stopwatch();
-        _chargedEndEffectStopwatch = new Stopwatch();
 
-        // Register packet handler
-        packetManager.RegisterClientPacketHandler<GenericClientData>(ClientPacketId.PlayerDeath,
-            OnPlayerDeath);
+    }
 
-        // Register scene change, which is where we update the animation event handler
-        UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChange;
-
-        // Register callbacks for the hero animation controller for the Airborne animation
-        On.HeroAnimationController.Play += HeroAnimationControllerOnPlay;
-        On.HeroAnimationController.PlayFromFrame += HeroAnimationControllerOnPlayFromFrame;
-
-        // Register callbacks for tracking to start of playing animation clips
-        On.tk2dSpriteAnimator.WarpClipToLocalTime += Tk2dSpriteAnimatorOnWarpClipToLocalTime;
-        On.tk2dSpriteAnimator.ProcessEvents += Tk2dSpriteAnimatorOnProcessEvents;
-
-        // Register a callback so we know when the dash has finished
-        On.HeroController.CancelDash += HeroControllerOnCancelDash;
-
-        // Register a callback so we can check the nail art charge status
-        ModHooks.HeroUpdateHook += OnHeroUpdateHook;
-
-        // Register a callback for when we get hit by a hazard
-        On.HeroController.DieFromHazard += HeroControllerOnDieFromHazard;
-        // Also register a callback from when we respawn from a hazard
-        On.GameManager.HazardRespawn += GameManagerOnHazardRespawn;
-
-        // Register when the HeroController starts, so we can register dung trail events
-        On.HeroController.Start += HeroControllerOnStart;
-
-        // Relinquish Control cancels a lot of effects, so we need to broadcast the end of these effects
-        On.HeroController.RelinquishControl += HeroControllerOnRelinquishControl;
-
-        // Register when the player dies to send the animation
-        ModHooks.BeforePlayerDeadHook += OnDeath;
+    public static void Initialize(
+        NetClient netClient, ServerSettings serverSettings) {
 
         // Set the server settings for all animation effects
         foreach (var effect in AnimationEffects.Values) {
             effect.SetServerSettings(serverSettings);
         }
     }
-
     /// <summary>
     /// Callback method when a player animation update is received. Will update the player object with the new
     /// animation.
@@ -465,13 +390,13 @@ internal class AnimationManager {
     /// <param name="clipId">The ID of the animation clip.</param>
     /// <param name="frame">The frame that the animation should play from.</param>
     /// <param name="effectInfo">A boolean array containing effect info for the animation.</param>
-    public void OnPlayerAnimationUpdate(ushort id, int clipId, int frame, bool[] effectInfo) {
+    public static void OnPlayerAnimationUpdate(ushort id, int clipId, int frame, bool[] effectInfo) {
         UpdatePlayerAnimation(id, clipId, frame);
 
         var animationClip = (AnimationClip) clipId;
 
         if (AnimationEffects.ContainsKey(animationClip)) {
-            var playerObject = _playerManager.GetPlayerObject(id);
+            var playerObject = PlayerManager.GetPlayerObject(id);
             if (playerObject == null) {
                 // Logger.Get().Warn(this, $"Tried to play animation effect {clipName} with ID: {id}, but player object doesn't exist");
                 return;
@@ -482,8 +407,8 @@ internal class AnimationManager {
             // Check if the animation effect is a DamageAnimationEffect and if so,
             // set whether it should deal damage based on player teams
             if (animationEffect is DamageAnimationEffect damageAnimationEffect) {
-                var localPlayerTeam = _playerManager.LocalPlayerTeam;
-                var otherPlayerTeam = _playerManager.GetPlayerTeam(id);
+                var localPlayerTeam = PlayerManager.LocalPlayerTeam;
+                var otherPlayerTeam = PlayerManager.GetPlayerTeam(id);
 
                 damageAnimationEffect.SetShouldDoDamage(
                     otherPlayerTeam != localPlayerTeam
@@ -505,8 +430,8 @@ internal class AnimationManager {
     /// <param name="id">The ID of the player.</param>
     /// <param name="clipId">The ID of the animation clip.</param>
     /// <param name="frame">The frame that the animation should play from.</param>
-    public void UpdatePlayerAnimation(ushort id, int clipId, int frame) {
-        var playerObject = _playerManager.GetPlayerObject(id);
+    public static void UpdatePlayerAnimation(ushort id, int clipId, int frame) {
+        var playerObject = PlayerManager.GetPlayerObject(id);
         if (playerObject == null) {
             // Logger.Get().Warn(this, $"Tried to update animation, but there was not matching player object for ID {id}");
             return;
@@ -536,7 +461,9 @@ internal class AnimationManager {
     /// </summary>
     /// <param name="oldScene">The old scene instance.</param>
     /// <param name="newScene">The name scene instance.</param>
-    private void OnSceneChange(Scene oldScene, Scene newScene) {
+    [HarmonyPatch(typeof(SceneManager), nameof(SceneManager.Internal_ActiveSceneChanged))]
+    [HarmonyPostfix]
+    private static void OnSceneChange(Scene oldScene, Scene newScene) {
         // A scene change occurs, so we can send again
         _stopSendingAnimationUntilSceneChange = false;
     }
@@ -545,7 +472,7 @@ internal class AnimationManager {
     /// Callback method when an animation fires in the sprite animator.
     /// </summary>
     /// <param name="clip">The sprite animation clip.</param>
-    private void OnAnimationEvent(tk2dSpriteAnimationClip clip) {
+    private static void OnAnimationEvent(tk2dSpriteAnimationClip clip) {
         // Logger.Info($"Animation event with name: {clip.name}");
 
         // If we are not connected, there is nothing to send to
@@ -634,11 +561,11 @@ internal class AnimationManager {
     /// Callback method on the HeroAnimationController#Play method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The hero animation controller instance.</param>
+    /// <param name="__instance">The hero animation controller instance.</param>
     /// <param name="clipName">The name of the clip to play.</param>
-    private void HeroAnimationControllerOnPlay(On.HeroAnimationController.orig_Play orig,
-        HeroAnimationController self, string clipName) {
-        orig(self, clipName);
+    [HarmonyPatch(typeof(HeroAnimationController), nameof(HeroAnimationController.Play))]
+    [HarmonyPostfix]
+    private static void PostfixPlay(string clipName) {
         OnAnimationControllerPlay(clipName, 0);
     }
 
@@ -646,12 +573,12 @@ internal class AnimationManager {
     /// Callback method on the HeroAnimationController#PlayFromFrame method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The hero animation controller instance.</param>
+    /// <param name="__instance">The hero animation controller instance.</param>
     /// <param name="clipName">The name of the clip to play.</param>
     /// <param name="frame">The frame from which to play the clip.</param>
-    private void HeroAnimationControllerOnPlayFromFrame(On.HeroAnimationController.orig_PlayFromFrame orig,
-        HeroAnimationController self, string clipName, int frame) {
-        orig(self, clipName, frame);
+    [HarmonyPatch(typeof(HeroAnimationController), nameof(HeroAnimationController.PlayFromFrame))]
+    [HarmonyPostfix]
+    private static void PostfixPlayFromFrame( string clipName, int frame) {
         OnAnimationControllerPlay(clipName, frame);
     }
 
@@ -660,7 +587,7 @@ internal class AnimationManager {
     /// </summary>
     /// <param name="clipName">The name of the clip to play.</param>
     /// <param name="frame">The frame from which to play the clip.</param>
-    private void OnAnimationControllerPlay(string clipName, int frame) {
+    private static void OnAnimationControllerPlay(string clipName, int frame) {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
             return;
@@ -692,10 +619,9 @@ internal class AnimationManager {
     /// Callback method on the HeroController#CancelDash method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
-    private void HeroControllerOnCancelDash(On.HeroController.orig_CancelDash orig, HeroController self) {
-        orig(self);
-
+    /// <param name="__instance">The HeroController instance.</param>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.CancelDash))]
+    private static void PostFixCancelDash( HeroController __instance) {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
             return;
@@ -710,7 +636,30 @@ internal class AnimationManager {
     /// <summary>
     /// Callback method for when the hero updates.
     /// </summary>
-    private void OnHeroUpdateHook() {
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.CanNailCharge))]
+    [HarmonyPostfix]
+    private static void PostfixCanNailCharge() {
+        UpdateChargeAttack();
+    }
+
+    /// <summary>
+    /// Callback method for when the hero updates.
+    /// </summary>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.CancelNailCharge))]
+    [HarmonyPostfix]
+    private static void PostfixCancelNailCharge() {
+        UpdateChargeAttack();
+    }
+
+    /// <summary>
+    /// Callback method for when the hero updates.
+    /// </summary>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.CanNailArt))]
+    private static void CanNailArt() {
+        UpdateChargeAttack();
+    }
+    private static void UpdateChargeAttack()
+    {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
             return;
@@ -771,16 +720,16 @@ internal class AnimationManager {
     /// the animation event for clips and we want to know when those clips start playing.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The tk2dSpriteAnimator instance.</param>
+    /// <param name="__instance">The tk2dSpriteAnimator instance.</param>
     /// <param name="clip">The tk2dSpriteAnimationClip instance.</param>
     /// <param name="time">The time to warp to.</param>
-    private void Tk2dSpriteAnimatorOnWarpClipToLocalTime(
-        On.tk2dSpriteAnimator.orig_WarpClipToLocalTime orig,
-        tk2dSpriteAnimator self,
+    [HarmonyPatch(typeof(tk2dSpriteAnimator), nameof(tk2dSpriteAnimator.WarpClipToLocalTime))]
+    [HarmonyPostfix]
+    private static void PostfixWarpClipToLocalTime(
+        tk2dSpriteAnimator __instance,
         tk2dSpriteAnimationClip clip,
         float time
     ) {
-        orig(self, clip, time);
 
         var localPlayer = HeroController.instance;
         if (localPlayer == null) {
@@ -788,11 +737,11 @@ internal class AnimationManager {
         }
 
         var spriteAnimator = localPlayer.GetComponent<tk2dSpriteAnimator>();
-        if (self != spriteAnimator) {
+        if (__instance != spriteAnimator) {
             return;
         }
 
-        var clipTime = ReflectionHelper.GetField<tk2dSpriteAnimator, float>(self, "clipTime");
+        var clipTime = __instance.clipTime;
         var index = (int) clipTime & clip.frames.Length;
         var frame = clip.frames[index];
 
@@ -806,18 +755,18 @@ internal class AnimationManager {
     /// the animation event for clips and we want to know when those clips start playing.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The tk2dSpriteAnimator instance.</param>
+    /// <param name="__instance">The tk2dSpriteAnimator instance.</param>
     /// <param name="start">The start of frames to process.</param>
     /// <param name="last">The last frame to process.</param>
     /// <param name="direction">The direction in which to process.</param>
-    private void Tk2dSpriteAnimatorOnProcessEvents(
-        On.tk2dSpriteAnimator.orig_ProcessEvents orig,
-        tk2dSpriteAnimator self,
+    [HarmonyPatch(typeof(tk2dSpriteAnimator), nameof(tk2dSpriteAnimator.ProcessEvents))]
+    [HarmonyPrefix]
+    private static void PrefixProcessEvents(
+        tk2dSpriteAnimator __instance,
         int start,
         int last,
         int direction
     ) {
-        orig(self, start, last, direction);
 
         var localPlayer = HeroController.instance;
         if (localPlayer == null) {
@@ -825,7 +774,7 @@ internal class AnimationManager {
         }
 
         var spriteAnimator = localPlayer.GetComponent<tk2dSpriteAnimator>();
-        if (self != spriteAnimator) {
+        if (__instance != spriteAnimator) {
             return;
         }
 
@@ -834,16 +783,16 @@ internal class AnimationManager {
         }
 
         var num = last + direction;
-        var frames = self.CurrentClip.frames;
+        var frames = __instance.CurrentClip.frames;
 
         var ignoreClipNames = new[] { "Quake Land 2" };
 
         for (var i = start + direction; i != num; i += direction) {
-            if (i != 0 && !frames[i].triggerEvent || ignoreClipNames.Contains(self.CurrentClip.name)) {
+            if (i != 0 && !frames[i].triggerEvent || ignoreClipNames.Contains(__instance.CurrentClip.name)) {
                 continue;
             }
 
-            OnAnimationEvent(self.CurrentClip);
+            OnAnimationEvent(__instance.CurrentClip);
         }
     }
 
@@ -851,34 +800,31 @@ internal class AnimationManager {
     /// Callback method on the HeroController#DieFromHazard method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
+    /// <param name="__instance">The HeroController instance.</param>
     /// <param name="hazardType">The type of hazard.</param>
     /// <param name="angle">The angle at which the hero entered the hazard.</param>
     /// <returns>An enumerator for this coroutine.</returns>
-    private IEnumerator HeroControllerOnDieFromHazard(On.HeroController.orig_DieFromHazard orig,
-        HeroController self, HazardType hazardType, float angle) {
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.DieFromHazard))]
+    [HarmonyPrefix]
+    private static void PrefixDieFromHazard(
+        HeroController __instance, HazardType hazardType, float angle) {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
-            return orig(self, hazardType, angle);
+            _netClient.UpdateManager.UpdatePlayerAnimation(AnimationClip.HazardDeath, 0, new[] {
+                hazardType.Equals(HazardType.SPIKES),
+                hazardType.Equals(HazardType.ACID)
+            });
         }
-
-        _netClient.UpdateManager.UpdatePlayerAnimation(AnimationClip.HazardDeath, 0, new[] {
-            hazardType.Equals(HazardType.SPIKES),
-            hazardType.Equals(HazardType.ACID)
-        });
-
-        // Execute the original method and return its value
-        return orig(self, hazardType, angle);
     }
 
     /// <summary>
     /// Callback method on the GameManager#HazardRespawn method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The GameManager instance.</param>
-    private void GameManagerOnHazardRespawn(On.GameManager.orig_HazardRespawn orig, GameManager self) {
-        orig(self);
-
+    /// <param name="__instance">The GameManager instance.</param>
+    [HarmonyPatch(typeof(GameManager), nameof(HeroController.HazardRespawn))]
+    [HarmonyPostfix]
+    private static void PostfixHazardRespawn(GameManager __instance) {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
             return;
@@ -891,7 +837,7 @@ internal class AnimationManager {
     /// Callback method for when a player death is received.
     /// </summary>
     /// <param name="data">The generic client data for this event.</param>
-    private void OnPlayerDeath(GenericClientData data) {
+    private static void OnPlayerDeath(GenericClientData data) {
         // And play the death animation for the ID in the packet
         MonoBehaviourUtil.Instance.StartCoroutine(PlayDeathAnimation(data.Id));
     }
@@ -899,7 +845,9 @@ internal class AnimationManager {
     /// <summary>
     /// Callback method for when the local player dies.
     /// </summary>
-    private void OnDeath() {
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.Die))]
+    [HarmonyPrefix]
+    private static void PrefixOnDeath() {
         // If we are not connected, there is nothing to send to
         if (!_netClient.IsConnected) {
             return;
@@ -916,11 +864,11 @@ internal class AnimationManager {
     /// </summary>
     /// <param name="id">The ID of the player.</param>
     /// <returns>An enumerator for the coroutine.</returns>
-    private IEnumerator PlayDeathAnimation(ushort id) {
+    private static IEnumerator PlayDeathAnimation(ushort id) {
         Logger.Debug("Starting death animation");
 
         // Get the player object corresponding to this ID
-        var playerObject = _playerManager.GetPlayerObject(id);
+        var playerObject = PlayerManager.GetPlayerObject(id);
 
         // Get the sprite animator and start playing the Death animation
         var animator = playerObject.GetComponent<tk2dSpriteAnimator>();
@@ -1001,27 +949,15 @@ internal class AnimationManager {
         headRigidBody.AddTorque(facingRight ? 20f : -20f);
     }
 
-    /// <summary>
-    /// Callback method on the HeroController#Start method.
-    /// </summary>
-    /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
-    private void HeroControllerOnStart(On.HeroController.orig_Start orig, HeroController self) {
-        // Execute original method
-        orig(self);
-
-        SetDescendingDarkLandEffectDelay();
-        RegisterDefenderCrestEffects();
-    }
 
     /// <summary>
     /// Callback method on the HeroController#RelinquishControl method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
-    private void HeroControllerOnRelinquishControl(On.HeroController.orig_RelinquishControl orig,
-        HeroController self) {
-        orig(self);
+    /// <param name="__instance">The HeroController instance.</param>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.RelinquishControl))]
+    [HarmonyPostfix]
+    private static void PostfixRelinquishControl(HeroController __instance) {
 
         // If we are not connected, there is no need to send
         if (!_netClient.IsConnected) {
@@ -1040,77 +976,6 @@ internal class AnimationManager {
         }
 
         _netClient.UpdateManager.UpdatePlayerAnimation(AnimationClip.DashEnd);
-    }
-
-    /// <summary>
-    /// Sets the delay for the descending dark land effect to trigger, since if we overwrite the
-    /// AnimationTriggerEvent, it will fallback to 0.75s, which is too long. The event normally triggers
-    /// at frame index 7, which is the 8th frame. The FPS of the animation is 20, which means 8/20 = 0.4s
-    /// after the animation starts is when we need to finish the action in the FSM. If this is confusing
-    /// check the "Spell Control" FSM of the knight and look at the "Q2 Land" state.
-    /// </summary>
-    private void SetDescendingDarkLandEffectDelay() {
-        var spellControl = HeroController.instance.spellControl;
-        var waitAction = spellControl.GetFirstAction<Wait>("Q2 Land");
-        waitAction.time.Value = 0.4f;
-    }
-
-    /// <summary>
-    /// Register/insert some method in the FSM for the Defenders Crest charm to send appropriate events
-    /// based on when the charm is equipped/unequipped.
-    /// </summary>
-    private void RegisterDefenderCrestEffects() {
-        var charmEffects = HeroController.instance.gameObject.FindGameObjectInChildren("Charm Effects");
-        if (charmEffects == null) {
-            return;
-        }
-
-        var dungObject = charmEffects.FindGameObjectInChildren("Dung");
-        if (dungObject == null) {
-            return;
-        }
-
-        var dungControlFsm = dungObject.LocateMyFSM("Control");
-
-        // Create a new dung trail event sending instance
-        var sendDungTrailEvent = new SendDungTrailEvent(_netClient);
-
-        // Keep track of whether we subscribed to the update event already,
-        // so we don't subscribe multiple times, with no way to unsubscribe those instances
-        var isSubscribed = false;
-
-        // Register the Update method of the SendDungTrailEvent class
-        // when the Defender's Crest charm is equipped
-        dungControlFsm.InsertMethod("Equipped", 1, () => {
-            Logger.Debug("Defender's Crest is equipped, starting dung trail event sending");
-
-            // Subscribe only when we haven't already
-            if (!isSubscribed) {
-                MonoBehaviourUtil.Instance.OnUpdateEvent += sendDungTrailEvent.Update;
-                isSubscribed = true;
-            }
-        });
-
-        // Deregister and reset the SendDungTrailEvent class when
-        // the Defender's Crest charm is unequipped
-        dungControlFsm.InsertMethod("Unequipped", 2, () => {
-            // If we weren't subscribed, we don't need to stop
-            if (!isSubscribed) {
-                return;
-            }
-
-            Logger.Debug("Defender's Crest is unequipped, stopping dung trail event sending");
-
-            MonoBehaviourUtil.Instance.OnUpdateEvent -= sendDungTrailEvent.Update;
-            sendDungTrailEvent.Reset();
-            isSubscribed = false;
-
-            if (!_netClient.IsConnected) {
-                return;
-            }
-
-            _netClient.UpdateManager.UpdatePlayerAnimation(AnimationClip.DungTrailEnd);
-        });
     }
 
     /// <summary>
