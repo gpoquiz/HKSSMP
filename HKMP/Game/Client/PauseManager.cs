@@ -1,10 +1,7 @@
 using System;
-using System.Collections;
-using System.Reflection;
 using GlobalEnums;
-using Hkmp.Api.Client;
+using HarmonyLib;
 using Hkmp.Networking.Client;
-using Modding;
 using UnityEngine;
 
 namespace Hkmp.Game.Client;
@@ -12,53 +9,41 @@ namespace Hkmp.Game.Client;
 /// <summary>
 /// Handles pause related things to prevent player being invincible in pause menu while connected to a server.
 /// </summary>
-internal class PauseManager : IPauseManager {
+internal static class PauseManager {
+    
+    /// <inheritdoc />
+    public static event Action<float> SetTimeScaleEvent;
     /// <summary>
     /// The net client instance.
     /// </summary>
-    private readonly NetClient _netClient;
-    
-    /// <inheritdoc />
-    public event Action<float> SetTimeScaleEvent;
+    private static NetClient _netClient;
 
-    public PauseManager(NetClient netClient) {
+    public static void Initialize(NetClient netClient) {
         _netClient = netClient;
     }
-
-    /// <summary>
-    /// Registers the required method hooks.
-    /// </summary>
-    public void RegisterHooks() {
-        On.InputHandler.Update += InputHandlerOnUpdate;
-        On.UIManager.TogglePauseGame += UIManagerOnTogglePauseGame;
-
-        On.HeroController.Pause += HeroControllerOnPause;
-        On.TransitionPoint.OnTriggerEnter2D += TransitionPointOnOnTriggerEnter2D;
-        On.HeroController.DieFromHazard += HeroControllerOnDieFromHazard;
-
-        ModHooks.BeforePlayerDeadHook += OnDeath;
-    }
-
     /// <summary>
     /// Callback method for the UIManager#TogglePauseGame method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The UIManager instance.</param>
-    private void UIManagerOnTogglePauseGame(On.UIManager.orig_TogglePauseGame orig, UIManager self) {
+    /// <param name="__instance">The UIManager instance.</param>
+    [HarmonyPatch(typeof(UIManager), nameof(UIManager.TogglePauseGame))]
+    [HarmonyPrefix]
+    private static void PrefixTogglePauseGame(UIManager __instance, out bool __state) {
+        __state = false;
         if (!_netClient.IsConnected) {
-            orig(self);
             return;
         }
 
         // First evaluate whether the original method would have started the coroutine:
         // GameManager#PauseGameToggleByMenu
-        var setTimeScale = !ReflectionHelper.GetField<UIManager, bool>(self, "ignoreUnpause");
+        __state = __instance.ignoreUnpause;
+    }
 
-        // Now we execute the original method, which will potentially set the timescale to 0f
-        orig(self);
-
+    [HarmonyPatch(typeof(UIManager), nameof(UIManager.TogglePauseGame))]
+    [HarmonyPostfix]
+    private static void PostfixTogglePauseGame(UIManager __instance, bool __state) {
         // If we evaluated that the coroutine was started, we can now reset the timescale back to 1 again
-        if (setTimeScale) {
+        if (__state) {
             SetTimeScale(1f);
         }
     }
@@ -66,35 +51,32 @@ internal class PauseManager : IPauseManager {
     /// <summary>
     /// Callback method for the InputHandler#Update method.
     /// </summary>
-    /// <param name="orig">The original method.</param>
-    /// <param name="self">The InputHandler instance.</param>
-    private void InputHandlerOnUpdate(On.InputHandler.orig_Update orig, InputHandler self) {
-        if (!_netClient.IsConnected) {
-            orig(self);
-            return;
-        }
+        /// <param name="orig">The original method.</param>
+        /// <param name="__instance">The InputHandler instance.</param>
+        [HarmonyPatch(typeof(InputHandler), nameof(InputHandler.Update))]
+    [HarmonyPrefix]
+    private static void PrefixOnUpdate(InputHandler __instance, out bool __state) {
 
         // First evaluate whether the original method would have started the coroutine:
         // GameManager#PauseGameToggleByMenu
-        var setTimeScale = false;
+        __state = false;
+        if (!_netClient.IsConnected || 
+            !__instance.acceptingInput ||
+            !__instance.inputActions.Pause.WasPressed ||
+            !__instance.PauseAllowed ||
+            PlayerData.instance.GetBool(nameof(PlayerData.disablePause))) return;
 
-        if (self.acceptingInput &&
-            self.inputActions.pause.WasPressed &&
-            self.pauseAllowed &&
-            !PlayerData.instance.GetBool(nameof(PlayerData.disablePause))) {
-            var state = global::GameManager.instance.gameState;
-            if (state == GameState.PLAYING || state == GameState.PAUSED) {
-                setTimeScale = true;
-            }
+        var state = global::GameManager.instance.GameState;
+        if (state is GameState.PLAYING or GameState.PAUSED) {
+            __state = true;
         }
+    }
 
-        // Now we execute the original method, which will potentially set the timescale to 0f
-        orig(self);
-
-        // If we evaluated that the coroutine was started, we can now reset the timescale back to 1 again
-        if (setTimeScale) {
+    [HarmonyPatch(typeof(InputHandler), nameof(InputHandler.Update))]
+    [HarmonyPostfix]
+    private static void PostfixOnUpdate(bool __state) {
+        if (__state)
             SetTimeScale(1f);
-        }
     }
 
     /// <summary>
@@ -103,8 +85,11 @@ internal class PauseManager : IPauseManager {
     /// while not in the pause menu, but not being able to give any input apart from opening the pause menu.
     /// Therefore, we unpause immediately before dying to prevent this.
     /// </summary>
-    private void OnDeath() {
-        ImmediateUnpauseIfPaused();
+    /// 
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.OnDeath))]
+    [HarmonyPrefix]
+    private static void PrefixOnDeath(HeroController __instance) {
+        ImmediateUnpauseIfPaused(__instance.gm);
     }
 
     /// <summary>
@@ -112,15 +97,14 @@ internal class PauseManager : IPauseManager {
     /// If we have a hazard respawn while in the pause menu it soft-locks the menu, so we unpause it first.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
+    /// <param name="__instance">The HeroController instance.</param>
     /// <param name="hazardType">The type of hazard the player dies from.</param>
     /// <param name="angle">The angle of entering the hazard.</param>
     /// <returns>An enumerator for the coroutine.</returns>
-    private IEnumerator HeroControllerOnDieFromHazard(On.HeroController.orig_DieFromHazard orig,
-        HeroController self, HazardType hazardType, float angle) {
-        ImmediateUnpauseIfPaused();
-
-        return orig(self, hazardType, angle);
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.DieFromHazard))]
+    [HarmonyPrefix]
+    private static void PrefixDieFromHazard(HeroController __instance) {
+        ImmediateUnpauseIfPaused(__instance.gm);
     }
 
     /// <summary>
@@ -129,21 +113,19 @@ internal class PauseManager : IPauseManager {
     /// unpause first and then let the original method continue.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The TransitionPoint instance.</param>
+    /// <param name="__instance">The TransitionPoint instance.</param>
     /// <param name="obj">The collider that enters the trigger.</param>
-    private void TransitionPointOnOnTriggerEnter2D(
-        On.TransitionPoint.orig_OnTriggerEnter2D orig,
-        TransitionPoint self,
+    [HarmonyPatch(typeof(TransitionPoint), nameof(TransitionPoint.OnTriggerEnter2D))]
+    [HarmonyPrefix]
+    private static void PrefixOnTriggerEnter2D(
+        TransitionPoint __instance,
         Collider2D obj
     ) {
         // Skip this if the transition point is a door, since it isn't a enter-and-teleport transition,
         // but requires input to transition, so it can't happen in the pause menu
-        if (!self.isADoor) {
-            ImmediateUnpauseIfPaused();
+        if (!__instance.isADoor) {
+            ImmediateUnpauseIfPaused(__instance.gm);
         }
-
-        // Execute original method
-        orig(self, obj);
     }
 
     /// <summary>
@@ -152,33 +134,25 @@ internal class PauseManager : IPauseManager {
     /// due to the timescale not being set to 0.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
-    private void HeroControllerOnPause(On.HeroController.orig_Pause orig, HeroController self) {
+    /// <param name="__instance">The HeroController instance.</param>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.Pause))]
+    [HarmonyPostfix]
+    private static void PostfixPause(HeroController __instance) {
         if (!_netClient.IsConnected) {
-            orig(self);
             return;
         }
 
-        // We simply call the private ResetInput method to prevent the knight from continuing movement
-        // while the game is paused
-        typeof(HeroController).InvokeMember(
-            "ResetInput",
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.InvokeMethod,
-            null,
-            HeroController.instance,
-            null
-        );
+        __instance.ResetInput();
     }
 
     /// <summary>
     /// Unpauses the game immediately if it was paused.
     /// </summary>
-    private static void ImmediateUnpauseIfPaused() {
+    private static void ImmediateUnpauseIfPaused(global::GameManager gm) {
         if (UIManager.instance != null) {
             if (UIManager.instance.uiState.Equals(UIState.PAUSED)) {
-                var gm = global::GameManager.instance;
 
-                ReflectionHelper.GetField<global::GameManager, GameCameras>(gm, "gameCams").ResumeCameraShake();
+                gm.gameCams.ResumeCameraShake();
                 gm.inputHandler.PreventPause();
                 gm.actorSnapshotUnpaused.TransitionTo(0f);
                 gm.isPaused = false;
@@ -199,9 +173,9 @@ internal class PauseManager : IPauseManager {
     /// Sets the time scale similarly to the method GameManager#SetTimeScale.
     /// </summary>
     /// <param name="timeScale">The new time scale.</param>
-    public void SetTimeScale(float timeScale) {
+    public static void SetTimeScale(float timeScale) {
         timeScale = timeScale > 0.00999999977648258 ? timeScale : 0.0f;
-        TimeController.GenericTimeScale = timeScale;
+        TimeManager.TimeScale = timeScale;
         SetTimeScaleEvent?.Invoke(timeScale);
     }
 }
