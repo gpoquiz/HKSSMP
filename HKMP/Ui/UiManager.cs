@@ -1,19 +1,25 @@
-﻿using GlobalEnums;
+using GlobalEnums;
+using HarmonyLib;
 using Hkmp.Api.Client;
 using Hkmp.Game.Settings;
 using Hkmp.Networking.Client;
 using Hkmp.Ui.Chat;
 using Hkmp.Util;
-using Modding;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using static CutsceneHelper;
 using Logger = Hkmp.Logging.Logger;
 
 namespace Hkmp.Ui;
 
 /// <inheritdoc />
-internal class UiManager : IUiManager {
+internal static class UiManager {
+    private static ComponentGroup _inGameGroup;
+    private static EventSystem _eventSystem;
+    private static ComponentGroup _pauseMenuGroup;
+
     #region Internal UI manager variables and properties
 
     /// <summary>
@@ -49,44 +55,44 @@ internal class UiManager : IUiManager {
     /// <summary>
     /// The connect interface.
     /// </summary>
-    public ConnectInterface ConnectInterface { get; }
+    public static ConnectInterface ConnectInterface;
 
     /// <summary>
     /// The client settings interface.
     /// </summary>
-    public ClientSettingsInterface SettingsInterface { get; }
+    public static ClientSettingsInterface SettingsInterface;
 
     /// <summary>
     /// The mod settings.
     /// </summary>
-    private readonly ModSettings _modSettings;
+    private static ModSettings _modSettings;
 
     /// <summary>
     /// The ping interface.
     /// </summary>
-    private readonly PingInterface _pingInterface;
+    private static PingInterface _pingInterface;
 
     /// <summary>
     /// Whether the UI is hidden by the key-bind.
     /// </summary>
-    private bool _isUiHiddenByKeyBind;
+    private static bool _isUiHiddenByKeyBind;
 
     /// <summary>
     /// Whether the game is in a state where we normally show the pause menu UI for example in a gameplay
     /// scene in the HK pause menu.
     /// </summary>
-    private bool _canShowPauseUi;
+    private static bool _canShowPauseUi;
 
     #endregion
 
     #region IUiManager properties
 
     /// <inheritdoc />
-    public IChatBox ChatBox => InternalChatBox;
+    public static IChatBox ChatBox => InternalChatBox;
 
     #endregion
 
-    public UiManager(
+    public static void Initialize(
         ServerSettings clientServerSettings,
         ModSettings modSettings,
         NetClient netClient
@@ -99,9 +105,9 @@ internal class UiManager : IUiManager {
         // Create event system object
         var eventSystemObj = new GameObject("EventSystem");
 
-        var eventSystem = eventSystemObj.AddComponent<EventSystem>();
-        eventSystem.sendNavigationEvents = true;
-        eventSystem.pixelDragThreshold = 10;
+        _eventSystem = eventSystemObj.AddComponent<EventSystem>();
+        _eventSystem.sendNavigationEvents = true;
+        _eventSystem.pixelDragThreshold = 10;
 
         eventSystemObj.AddComponent<StandaloneInputModule>();
 
@@ -121,11 +127,11 @@ internal class UiManager : IUiManager {
 
         var uiGroup = new ComponentGroup();
 
-        var pauseMenuGroup = new ComponentGroup(false, uiGroup);
+        _pauseMenuGroup = new ComponentGroup(false, uiGroup);
 
-        var connectGroup = new ComponentGroup(parent: pauseMenuGroup);
+        var connectGroup = new ComponentGroup(parent: _pauseMenuGroup);
 
-        var settingsGroup = new ComponentGroup(parent: pauseMenuGroup);
+        var settingsGroup = new ComponentGroup(parent: _pauseMenuGroup);
 
         ConnectInterface = new ConnectInterface(
             modSettings,
@@ -133,13 +139,13 @@ internal class UiManager : IUiManager {
             settingsGroup
         );
 
-        var inGameGroup = new ComponentGroup(parent: uiGroup);
+        _inGameGroup = new ComponentGroup(parent: uiGroup);
 
-        var infoBoxGroup = new ComponentGroup(parent: inGameGroup);
+        var infoBoxGroup = new ComponentGroup(parent: _inGameGroup);
 
         InternalChatBox = new ChatBox(infoBoxGroup, modSettings);
 
-        var pingGroup = new ComponentGroup(parent: inGameGroup);
+        var pingGroup = new ComponentGroup(parent: _inGameGroup);
 
         _pingInterface = new PingInterface(
             pingGroup,
@@ -155,59 +161,67 @@ internal class UiManager : IUiManager {
             _pingInterface
         );
 
-        // Register callbacks to make sure the UI is hidden and shown at correct times
-        On.UIManager.SetState += (orig, self, state) => {
-            orig(self, state);
-
-            if (state == UIState.PAUSED) {
-                // Only show UI in gameplay scenes
-                if (!SceneUtil.IsNonGameplayScene(SceneUtil.GetCurrentSceneName())) {
-                    _canShowPauseUi = true;
-
-                    pauseMenuGroup.SetActive(!_isUiHiddenByKeyBind);
-                }
-
-                inGameGroup.SetActive(false);
-            } else {
-                pauseMenuGroup.SetActive(false);
-
-                _canShowPauseUi = false;
-
-                // Only show chat box UI in gameplay scenes
-                if (!SceneUtil.IsNonGameplayScene(SceneUtil.GetCurrentSceneName())) {
-                    inGameGroup.SetActive(true);
-                }
-            }
-        };
-        UnityEngine.SceneManagement.SceneManager.activeSceneChanged += (oldScene, newScene) => {
-            if (SceneUtil.IsNonGameplayScene(newScene.name)) {
-                eventSystem.enabled = false;
-
-                _canShowPauseUi = false;
-
-                pauseMenuGroup.SetActive(false);
-                inGameGroup.SetActive(false);
-            } else {
-                eventSystem.enabled = true;
-
-                inGameGroup.SetActive(true);
-            }
-        };
-
         // The game is automatically unpaused when the knight dies, so we need
         // to disable the UI menu manually
         // TODO: this still gives issues, since it displays the cursor while we are supposed to be unpaused
-        ModHooks.AfterPlayerDeadHook += () => { pauseMenuGroup.SetActive(false); };
 
         MonoBehaviourUtil.Instance.OnUpdateEvent += () => { CheckKeyBinds(uiGroup); };
     }
 
     #region Internal UI manager methods
 
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.OnDeath))]
+    [HarmonyPostfix]
+    private static void PostfixOnDeath(Scene previousActiveScene, Scene newActiveScene) {
+        _pauseMenuGroup.SetActive(false);
+    }
+
+    [HarmonyPatch(typeof(SceneManager), nameof(SceneManager.Internal_ActiveSceneChanged))]
+    [HarmonyPostfix]
+    private static void PostfixSetState(Scene previousActiveScene, Scene newActiveScene) {
+        if (SceneUtil.IsNonGameplayScene(newActiveScene.name)) {
+            _eventSystem.enabled = false;
+
+            _canShowPauseUi = false;
+
+            _pauseMenuGroup.SetActive(false);
+            _inGameGroup.SetActive(false);
+        } else {
+            _eventSystem.enabled = true;
+
+            _inGameGroup.SetActive(true);
+        }
+    }
+
+    [HarmonyPatch(typeof(UIManager), nameof(UIManager.SetState))]
+    private static void PostfixSetState(UIState newState) {
+        {
+            if (newState == UIState.PAUSED) {
+                // Only show UI in gameplay scenes
+                if (!SceneUtil.IsNonGameplayScene(SceneUtil.GetCurrentSceneName())) {
+                    _canShowPauseUi = true;
+
+                    _pauseMenuGroup.SetActive(!_isUiHiddenByKeyBind);
+                }
+
+                _inGameGroup.SetActive(false);
+            } else {
+                _pauseMenuGroup.SetActive(false);
+
+                _canShowPauseUi = false;
+
+                // Only show chat box UI in gameplay scenes
+                if (!SceneUtil.IsNonGameplayScene(SceneUtil.GetCurrentSceneName())) {
+                    _inGameGroup.SetActive(true);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Callback method for when the client successfully connects.
     /// </summary>
-    public void OnSuccessfulConnect() {
+    public static void OnSuccessfulConnect() {
         ConnectInterface.OnSuccessfulConnect();
         _pingInterface.SetEnabled(true);
         SettingsInterface.OnSuccessfulConnect();
@@ -217,14 +231,14 @@ internal class UiManager : IUiManager {
     /// Callback method for when the client fails to connect.
     /// </summary>
     /// <param name="result">The result of the failed connection.</param>
-    public void OnFailedConnect(ConnectFailedResult result) {
+    public static void OnFailedConnect(ConnectFailedResult result) {
         ConnectInterface.OnFailedConnect(result);
     }
 
     /// <summary>
     /// Callback method for when the client disconnects.
     /// </summary>
-    public void OnClientDisconnect() {
+    public static void OnClientDisconnect() {
         ConnectInterface.OnClientDisconnect();
         _pingInterface.SetEnabled(false);
         SettingsInterface.OnDisconnect();
@@ -233,7 +247,7 @@ internal class UiManager : IUiManager {
     /// <summary>
     /// Callback method for when the team setting in the <see cref="ServerSettings"/> changes.
     /// </summary>
-    public void OnTeamSettingChange() {
+    public static void OnTeamSettingChange() {
         SettingsInterface.OnTeamSettingChange();
     }
 
@@ -241,7 +255,7 @@ internal class UiManager : IUiManager {
     /// Check key-binds to show/hide the UI.
     /// </summary>
     /// <param name="uiGroup">The component group for the entire UI.</param>
-    private void CheckKeyBinds(ComponentGroup uiGroup) {
+    private static void CheckKeyBinds(ComponentGroup uiGroup) {
         if (Input.GetKeyDown((KeyCode) _modSettings.HideUiKey)) {
             // Only allow UI toggling within the pause menu, otherwise the chat input might interfere
             if (_canShowPauseUi) {
@@ -259,22 +273,22 @@ internal class UiManager : IUiManager {
     #region IUiManager methods
 
     /// <inheritdoc />
-    public void DisableTeamSelection() {
+    public static void DisableTeamSelection() {
         SettingsInterface.OnAddonSetTeamSelection(false);
     }
 
     /// <inheritdoc />
-    public void EnableTeamSelection() {
+    public static void EnableTeamSelection() {
         SettingsInterface.OnAddonSetTeamSelection(true);
     }
 
     /// <inheritdoc />
-    public void DisableSkinSelection() {
+    public static void DisableSkinSelection() {
         SettingsInterface.OnAddonSetSkinSelection(false);
     }
 
     /// <inheritdoc />
-    public void EnableSkinSelection() {
+    public static void EnableSkinSelection() {
         SettingsInterface.OnAddonSetSkinSelection(true);
     }
 

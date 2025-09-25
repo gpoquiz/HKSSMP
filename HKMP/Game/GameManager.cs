@@ -25,10 +25,9 @@ internal class GameManager {
         FontManager.LoadFonts();
         TextureManager.LoadTextures();
 
-        var packetManager = new PacketManager();
 
-        var netClient = new NetClient(packetManager);
-        var netServer = new NetServer(packetManager);
+        var netClient = new NetClient();
+        var netServer = new NetServer();
 
         var clientServerSettings = new ServerSettings();
         if (modSettings.ServerSettings == null) {
@@ -36,7 +35,7 @@ internal class GameManager {
         }
         var serverServerSettings = modSettings.ServerSettings;
 
-        var uiManager = new UiManager(
+        UiManager.Initialize(
             clientServerSettings,
             modSettings,
             netClient
@@ -44,17 +43,13 @@ internal class GameManager {
 
         var serverManager = new ModServerManager(
             netServer,
-            serverServerSettings,
-            packetManager,
-            uiManager
+            serverServerSettings
         );
         serverManager.Initialize();
 
         new ClientManager(
             netClient,
             serverManager,
-            packetManager,
-            uiManager,
             clientServerSettings,
             modSettings
         );
