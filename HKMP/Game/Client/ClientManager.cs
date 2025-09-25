@@ -1,8 +1,9 @@
-using System;
-using System.Collections.Generic;
 using GlobalEnums;
+using HarmonyLib;
 using Hkmp.Animation;
 using Hkmp.Api.Client;
+using Hkmp.Api.Eventing;
+using Hkmp.Api.Server;
 using Hkmp.Eventing;
 using Hkmp.Fsm;
 using Hkmp.Game.Client.Entity;
@@ -14,7 +15,8 @@ using Hkmp.Networking.Packet;
 using Hkmp.Networking.Packet.Data;
 using Hkmp.Ui;
 using Hkmp.Util;
-using Modding;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Logger = Hkmp.Logging.Logger;
@@ -26,86 +28,49 @@ namespace Hkmp.Game.Client;
 /// <summary>
 /// Class that manages the client state (similar to ServerManager).
 /// </summary>
-internal class ClientManager : IClientManager {
+internal static class ClientManager {
     #region Internal client manager variables and properties
 
     /// <summary>
     /// The net client instance.
     /// </summary>
-    private readonly NetClient _netClient;
-
+    private static readonly NetClient _netClient;
     /// <summary>
     /// The server manager instance.
     /// </summary>
-    private readonly ServerManager _serverManager;
-
-    /// <summary>
-    /// The UI manager instance.
-    /// </summary>
-    private readonly UiManager _uiManager;
+    private static readonly ServerManager _serverManager;
 
     /// <summary>
     /// The current server settings.
     /// </summary>
-    private readonly ServerSettings _serverSettings;
+    private static readonly ServerSettings _serverSettings;
 
     /// <summary>
     /// The loaded mod settings.
     /// </summary>
-    private readonly ModSettings _modSettings;
-
-    /// <summary>
-    /// The player manager instance.
-    /// </summary>
-    private readonly PlayerManager _playerManager;
-
-    /// <summary>
-    /// The animation manager instance.
-    /// </summary>
-    private readonly AnimationManager _animationManager;
-
-    /// <summary>
-    /// The map manager instance.
-    /// </summary>
-    private readonly MapManager _mapManager;
-
-    /// <summary>
-    /// The entity manager instance.
-    /// </summary>
-    private readonly EntityManager _entityManager;
-
-    /// <summary>
-    /// The pause manager instance.
-    /// </summary>
-    private readonly PauseManager _pauseManager;
+    private static ModSettings ModSettings = new();
 
     /// <summary>
     /// The client addon manager instance.
     /// </summary>
-    private readonly ClientAddonManager _addonManager;
+    private static ClientAddonManager AddonManager;
 
     /// <summary>
     /// The client command manager instance.
     /// </summary>
-    private readonly ClientCommandManager _commandManager;
+    private static readonly ClientCommandManager CommandManager = new();
 
     /// <summary>
     /// Dictionary containing a mapping from user IDs to the client player data.
     /// </summary>
-    private readonly Dictionary<ushort, ClientPlayerData> _playerData;
+    private static readonly Dictionary<ushort, ClientPlayerData> PlayerData = new();
 
     #endregion
 
     #region IClientManager properties
 
     /// <inheritdoc />
-    public IMapManager MapManager => _mapManager;
-
-    /// <inheritdoc />
-    public IPauseManager PauseManager => _pauseManager;
-
-    /// <inheritdoc />
-    public string Username {
+    public static string Username {
         get {
             if (!_netClient.IsConnected) {
                 throw new Exception("Client is not connected, username is undefined");
@@ -116,157 +81,113 @@ internal class ClientManager : IClientManager {
     }
 
     /// <inheritdoc />
-    public IReadOnlyCollection<IClientPlayer> Players => _playerData.Values;
+    public static IReadOnlyCollection<IClientPlayer> Players => PlayerData.Values;
+    /// <inheritdoc />
+    public static event Action ConnectEvent;
 
     /// <inheritdoc />
-    public event Action ConnectEvent;
+    public static event Action DisconnectEvent;
 
     /// <inheritdoc />
-    public event Action DisconnectEvent;
+    public static event Action<IClientPlayer> PlayerConnectEvent;
 
     /// <inheritdoc />
-    public event Action<IClientPlayer> PlayerConnectEvent;
+    public static event Action<IClientPlayer> PlayerDisconnectEvent;
 
     /// <inheritdoc />
-    public event Action<IClientPlayer> PlayerDisconnectEvent;
+    public static event Action<IClientPlayer> PlayerEnterSceneEvent;
 
     /// <inheritdoc />
-    public event Action<IClientPlayer> PlayerEnterSceneEvent;
+    public static event Action<IClientPlayer> PlayerLeaveSceneEvent;
 
     /// <inheritdoc />
-    public event Action<IClientPlayer> PlayerLeaveSceneEvent;
-
-    /// <inheritdoc />
-    public Team Team => _playerManager.LocalPlayerTeam;
+    public static Team Team => PlayerManager.LocalPlayerTeam;
 
     #endregion
 
     /// <summary>
     /// The username that was last used to connect with.
     /// </summary>
-    private string _username;
+    private static string _username;
 
     /// <summary>
     /// Keeps track of the last updated location of the local player object.
     /// </summary>
-    private Vector3 _lastPosition;
+    private static Vector3 _lastPosition;
 
     /// <summary>
     /// Keeps track of the last updated scale of the local player object.
     /// </summary>
-    private Vector3 _lastScale;
+    private static Vector3 _lastScale;
 
     /// <summary>
     /// Whether the scene has just changed and we are in a scene change.
     /// </summary>
-    private bool _sceneChanged;
+    private static bool _sceneChanged;
 
     /// <summary>
     /// Whether we have already determined whether we are scene host or not for the entity system.
     /// </summary>
-    private bool _sceneHostDetermined;
+    private static bool _sceneHostDetermined;
 
-    public ClientManager(
+    public static void Initialize(
         NetClient netClient,
         ServerManager serverManager,
-        PacketManager packetManager,
-        UiManager uiManager,
         ServerSettings serverSettings,
         ModSettings modSettings
     ) {
-        _netClient = netClient;
-        _serverManager = serverManager;
-        _uiManager = uiManager;
-        _serverSettings = serverSettings;
-        _modSettings = modSettings;
 
-        _playerData = new Dictionary<ushort, ClientPlayerData>();
+        var clientApi = new ClientApi(netClient);
 
-        _playerManager = new PlayerManager(packetManager, serverSettings, _playerData);
-        _animationManager = new AnimationManager(netClient, _playerManager, packetManager, serverSettings);
-        _mapManager = new MapManager(netClient, serverSettings);
+        AddonManager = new ClientAddonManager(clientApi, modSettings);
 
-        _entityManager = new EntityManager(netClient);
-
-        _pauseManager = new PauseManager(netClient);
-        _pauseManager.RegisterHooks();
-
-        new FsmPatcher().RegisterHooks();
-
-        _commandManager = new ClientCommandManager();
-        var eventAggregator = new EventAggregator();
-
-        var clientApi = new ClientApi(this, _commandManager, uiManager, netClient, eventAggregator);
-        _addonManager = new ClientAddonManager(clientApi, _modSettings);
-        
         RegisterCommands();
 
-        ModHooks.FinishedLoadingModsHook += _addonManager.LoadAddons;
 
         // Check if there is a valid authentication key and if not, generate a new one
-        if (!AuthUtil.IsValidAuthKey(modSettings.AuthKey)) {
-            modSettings.AuthKey = AuthUtil.GenerateAuthKey();
+        if (!AuthUtil.IsValidAuthKey(ModSettings.AuthKey)) {
+            ModSettings.AuthKey = AuthUtil.GenerateAuthKey();
         }
 
         // Then authorize the key on the locally hosted server
         serverManager.AuthorizeKey(modSettings.AuthKey);
 
         // Register packet handlers
-        packetManager.RegisterClientPacketHandler<HelloClient>(ClientPacketId.HelloClient, OnHelloClient);
-        packetManager.RegisterClientPacketHandler<ServerClientDisconnect>(ClientPacketId.ServerClientDisconnect,
+        PacketManager.RegisterClientPacketHandler<HelloClient>(ClientPacketId.HelloClient, OnHelloClient);
+        PacketManager.RegisterClientPacketHandler<ServerClientDisconnect>(ClientPacketId.ServerClientDisconnect,
             OnDisconnect);
-        packetManager.RegisterClientPacketHandler<PlayerConnect>(ClientPacketId.PlayerConnect, OnPlayerConnect);
-        packetManager.RegisterClientPacketHandler<ClientPlayerDisconnect>(ClientPacketId.PlayerDisconnect,
+        PacketManager.RegisterClientPacketHandler<PlayerConnect>(ClientPacketId.PlayerConnect, OnPlayerConnect);
+        PacketManager.RegisterClientPacketHandler<ClientPlayerDisconnect>(ClientPacketId.PlayerDisconnect,
             OnPlayerDisconnect);
-        packetManager.RegisterClientPacketHandler<ClientPlayerEnterScene>(ClientPacketId.PlayerEnterScene,
+        PacketManager.RegisterClientPacketHandler<ClientPlayerEnterScene>(ClientPacketId.PlayerEnterScene,
             OnPlayerEnterScene);
-        packetManager.RegisterClientPacketHandler<ClientPlayerAlreadyInScene>(ClientPacketId.PlayerAlreadyInScene,
+        PacketManager.RegisterClientPacketHandler<ClientPlayerAlreadyInScene>(ClientPacketId.PlayerAlreadyInScene,
             OnPlayerAlreadyInScene);
-        packetManager.RegisterClientPacketHandler<GenericClientData>(ClientPacketId.PlayerLeaveScene,
+        PacketManager.RegisterClientPacketHandler<GenericClientData>(ClientPacketId.PlayerLeaveScene,
             OnPlayerLeaveScene);
-        packetManager.RegisterClientPacketHandler<PlayerUpdate>(ClientPacketId.PlayerUpdate, OnPlayerUpdate);
-        packetManager.RegisterClientPacketHandler<PlayerMapUpdate>(ClientPacketId.PlayerMapUpdate,
+        PacketManager.RegisterClientPacketHandler<PlayerUpdate>(ClientPacketId.PlayerUpdate, OnPlayerUpdate);
+        PacketManager.RegisterClientPacketHandler<PlayerMapUpdate>(ClientPacketId.PlayerMapUpdate,
             OnPlayerMapUpdate);
-        packetManager.RegisterClientPacketHandler<EntityUpdate>(ClientPacketId.EntityUpdate, OnEntityUpdate);
-        packetManager.RegisterClientPacketHandler<ServerSettingsUpdate>(ClientPacketId.ServerSettingsUpdated,
+        PacketManager.RegisterClientPacketHandler<EntityUpdate>(ClientPacketId.EntityUpdate, OnEntityUpdate);
+        PacketManager.RegisterClientPacketHandler<ServerSettingsUpdate>(ClientPacketId.ServerSettingsUpdated,
             OnServerSettingsUpdated);
-        packetManager.RegisterClientPacketHandler<ChatMessage>(ClientPacketId.ChatMessage, OnChatMessage);
+        PacketManager.RegisterClientPacketHandler<ChatMessage>(ClientPacketId.ChatMessage, OnChatMessage);
 
         // Register handlers for events from UI
-        uiManager.ConnectInterface.ConnectButtonPressed += Connect;
-        uiManager.ConnectInterface.DisconnectButtonPressed += () => Disconnect();
-        uiManager.SettingsInterface.OnTeamRadioButtonChange += InternalChangeTeam;
-        uiManager.SettingsInterface.OnSkinIdChange += InternalChangeSkin;
+        UiManager.ConnectInterface.ConnectButtonPressed += Connect;
+        UiManager.ConnectInterface.DisconnectButtonPressed += () => Disconnect();
+        UiManager.SettingsInterface.OnTeamRadioButtonChange += InternalChangeTeam;
+        UiManager.SettingsInterface.OnSkinIdChange += InternalChangeSkin;
 
         UiManager.InternalChatBox.ChatInputEvent += OnChatInput;
 
-        netClient.ConnectEvent += _ => uiManager.OnSuccessfulConnect();
-        netClient.ConnectFailedEvent += OnConnectFailed;
+        _netClient.ConnectEvent += _ => UiManager.OnSuccessfulConnect();
+        _netClient.ConnectFailedEvent += OnConnectFailed;
 
-        // Register the Hero Controller Start, which is when the local player spawns
-        On.HeroController.Start += (orig, self) => {
-            // Execute the original method
-            orig(self);
-            // If we are connect to a server, add a username to the player object
-            if (netClient.IsConnected) {
-                _playerManager.AddNameToPlayer(
-                    HeroController.instance.gameObject,
-                    _username,
-                    _playerManager.LocalPlayerTeam
-                );
-            }
-        };
-
-        // Register handlers for scene change and player update
-        UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChange;
-        On.HeroController.Update += OnPlayerUpdate;
 
         // Register client connect and timeout handler
-        netClient.ConnectEvent += OnClientConnect;
-        netClient.TimeoutEvent += OnTimeout;
-
-        // Register application quit handler
-        ModHooks.ApplicationQuitHook += OnApplicationQuit;
+        _netClient.ConnectEvent += OnClientConnect;
+        _netClient.TimeoutEvent += OnTimeout;
     }
 
     #region Internal client-manager methods
@@ -274,19 +195,31 @@ internal class ClientManager : IClientManager {
     /// <summary>
     /// Register the default client commands.
     /// </summary>
-    private void RegisterCommands() {
-        _commandManager.RegisterCommand(new ConnectCommand(this));
-        _commandManager.RegisterCommand(new HostCommand(_serverManager));
-        _commandManager.RegisterCommand(new AddonCommand(_addonManager, _netClient));
+    private static void RegisterCommands() {
+        CommandManager.RegisterCommand(new ConnectCommand());
+        CommandManager.RegisterCommand(new HostCommand(_serverManager));
+        CommandManager.RegisterCommand(new AddonCommand(AddonManager, _netClient));
     }
+    // Register the Hero Controller Start, which is when the local player spawns
 
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.Start))]
+    [HarmonyPostfix]
+    private static void PostfixStart() {
+        if (_netClient.IsConnected) {
+            PlayerManager.AddNameToPlayer(
+                HeroController.instance.gameObject,
+                _username,
+                PlayerManager.LocalPlayerTeam
+            );
+        }
+    }
     /// <summary>
     /// Connect the client to the server with the given address, port and username.
     /// </summary>
     /// <param name="address">The address of the server.</param>
     /// <param name="port">The port of the server.</param>
     /// <param name="username">The username of the client.</param>
-    public void Connect(string address, int port, string username) {
+    public static void Connect(string address, int port, string username) {
         Logger.Info($"Connecting client to server: {address}:{port} as {username}");
 
         // Stop existing client
@@ -303,13 +236,13 @@ internal class ClientManager : IClientManager {
             address,
             port,
             username,
-            _modSettings.AuthKey,
-            _addonManager.GetNetworkedAddonData()
+            ModSettings.AuthKey,
+            AddonManager.GetNetworkedAddonData()
         );
     }
 
     /// <inheritdoc />
-    public void Disconnect() {
+    public static void Disconnect() {
         if (_netClient.IsConnected) {
             // Send the server that we are disconnecting
             Logger.Info("Sending PlayerDisconnect packet");
@@ -322,22 +255,22 @@ internal class ClientManager : IClientManager {
     /// <summary>
     /// Internal logic for disconnecting from the server.
     /// </summary>
-    private void InternalDisconnect() {
+    private static void InternalDisconnect() {
         _netClient.Disconnect();
 
         // Let the player manager know we disconnected
-        _playerManager.OnDisconnect();
+        PlayerManager.OnDisconnect();
 
         // Clear the player data dictionary
-        _playerData.Clear();
+        PlayerData.Clear();
 
-        _uiManager.OnClientDisconnect();
+        UiManager.OnClientDisconnect();
 
-        _addonManager.ClearNetworkedAddonIds();
+        AddonManager.ClearNetworkedAddonIds();
 
         // Check whether the game is in the pause menu and reset timescale to 0 in that case
         if (UIManager.instance.uiState.Equals(UIState.PAUSED)) {
-            _pauseManager.SetTimeScale(0);
+            PauseManager.SetTimeScale(0);
         }
 
         try {
@@ -352,8 +285,8 @@ internal class ClientManager : IClientManager {
     /// Callback method for when the connection to the server fails with a given result.
     /// </summary>
     /// <param name="result">The result of the failed connection.</param>
-    private void OnConnectFailed(ConnectFailedResult result) {
-        _uiManager.OnFailedConnect(result);
+    private static void OnConnectFailed(ConnectFailedResult result) {
+        UiManager.OnFailedConnect(result);
 
         if (result.Type == ConnectFailedResult.FailType.InvalidAddons) {
             // Inform the user of the correct addons that the server needs
@@ -361,7 +294,7 @@ internal class ClientManager : IClientManager {
 
             // Keep track of addons that the client has that the server does not, by removing all addons
             // that the server reports to have
-            var clientAddonData = _addonManager.GetNetworkedAddonData();
+            var clientAddonData = AddonManager.GetNetworkedAddonData();
 
             // First check for each of the addons that the server has, whether the client has them or not
             foreach (var addonData in result.AddonData) {
@@ -369,7 +302,7 @@ internal class ClientManager : IClientManager {
                 var addonVersion = addonData.Version;
                 var message = $"  {addonName} v{addonVersion}";
 
-                if (_addonManager.TryGetNetworkedAddon(addonName, addonVersion, out var addon)) {
+                if (AddonManager.TryGetNetworkedAddon(addonName, addonVersion, out var addon)) {
                     if (addon is TogglableClientAddon { Disabled: true }) {
                         message += " (disabled)";
                     } else {
@@ -399,8 +332,8 @@ internal class ClientManager : IClientManager {
     /// Callback method for when chat is input by the local user.
     /// </summary>
     /// <param name="message">The message that was submitted by the user.</param>
-    private void OnChatInput(string message) {
-        if (_commandManager.ProcessCommand(message)) {
+    private static void OnChatInput(string message) {
+        if (CommandManager.ProcessCommand(message)) {
             Logger.Debug("Chat input was processed as command");
             return;
         }
@@ -416,7 +349,7 @@ internal class ClientManager : IClientManager {
     /// Internal method for changing the local player team.
     /// </summary>
     /// <param name="team">The new team.</param>
-    private void InternalChangeTeam(Team team) {
+    private static void InternalChangeTeam(Team team) {
         if (!_netClient.IsConnected) {
             return;
         }
@@ -426,11 +359,11 @@ internal class ClientManager : IClientManager {
             return;
         }
 
-        if (_playerManager.LocalPlayerTeam == team) {
+        if (PlayerManager.LocalPlayerTeam == team) {
             return;
         }
 
-        _playerManager.OnLocalPlayerTeamUpdate(team);
+        PlayerManager.OnLocalPlayerTeamUpdate(team);
 
         _netClient.UpdateManager.SetTeamUpdate(team);
 
@@ -441,7 +374,7 @@ internal class ClientManager : IClientManager {
     /// Internal method for changing the local player skin.
     /// </summary>
     /// <param name="skinId">The ID of the new skin.</param>
-    private void InternalChangeSkin(byte skinId) {
+    private static void InternalChangeSkin(byte skinId) {
         if (!_netClient.IsConnected) {
             return;
         }
@@ -454,7 +387,7 @@ internal class ClientManager : IClientManager {
         Logger.Debug($"Changed local player skin to ID: {skinId}");
 
         // Let the player manager handle the skin updating and send the change to the server
-        _playerManager.UpdateLocalPlayerSkin(skinId);
+        PlayerManager.UpdateLocalPlayerSkin(skinId);
         _netClient.UpdateManager.SetSkinUpdate(skinId);
     }
 
@@ -462,14 +395,14 @@ internal class ClientManager : IClientManager {
     /// Callback method for when the net client establishes a connection with a server.
     /// </summary>
     /// <param name="loginResponse">The login response received from the server.</param>
-    private void OnClientConnect(LoginResponse loginResponse) {
+    private static void OnClientConnect(LoginResponse loginResponse) {
         // First relay the addon order from the login response to the addon manager
-        _addonManager.UpdateNetworkedAddonOrder(loginResponse.AddonOrder);
+        AddonManager.UpdateNetworkedAddonOrder(loginResponse.AddonOrder);
 
         // We should only be able to connect during a gameplay scene,
         // which is when the player is spawned already, so we can add the username
-        _playerManager.AddNameToPlayer(HeroController.instance.gameObject, _username,
-            _playerManager.LocalPlayerTeam);
+        PlayerManager.AddNameToPlayer(HeroController.instance.gameObject, _username,
+            PlayerManager.LocalPlayerTeam);
 
         Logger.Info("Client is connected, sending Hello packet");
 
@@ -495,7 +428,7 @@ internal class ClientManager : IClientManager {
 
         // Since we are probably in the pause menu when we connect, set the timescale so the game
         // is running while paused
-        _pauseManager.SetTimeScale(1.0f);
+        PauseManager.SetTimeScale(1.0f);
 
         UiManager.InternalChatBox.AddMessage("You are connected to the server");
     }
@@ -504,14 +437,14 @@ internal class ClientManager : IClientManager {
     /// Callback method for when we receive the HelloClient data.
     /// </summary>
     /// <param name="helloClient">The HelloClient packet data.</param>
-    private void OnHelloClient(HelloClient helloClient) {
+    private static void OnHelloClient(HelloClient helloClient) {
         Logger.Info("Received HelloClient from server");
 
         // Fill the player data dictionary with the info from the packet
         foreach (var (id, username) in helloClient.ClientInfo) {
-            _playerData[id] = new ClientPlayerData(id, username);
+            PlayerData[id] = new ClientPlayerData(id, username);
         }
-        
+
         try {
             ConnectEvent?.Invoke();
         } catch (Exception e) {
@@ -523,7 +456,7 @@ internal class ClientManager : IClientManager {
     /// <summary>
     /// Callback method for when we receive a server disconnect.
     /// </summary>
-    private void OnDisconnect(ServerClientDisconnect disconnect) {
+    private static void OnDisconnect(ServerClientDisconnect disconnect) {
         Logger.Info($"Received ServerClientDisconnect, reason: {disconnect.Reason}");
 
         if (disconnect.Reason == DisconnectReason.Banned) {
@@ -542,11 +475,11 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a player connects to the server.
     /// </summary>
     /// <param name="playerConnect">The PlayerConnect packet data.</param>
-    private void OnPlayerConnect(PlayerConnect playerConnect) {
+    private static void OnPlayerConnect(PlayerConnect playerConnect) {
         Logger.Info($"Received PlayerConnect data for ID: {playerConnect.Id}");
 
         var playerData = new ClientPlayerData(playerConnect.Id, playerConnect.Username);
-        _playerData[playerConnect.Id] = playerData;
+        PlayerData[playerConnect.Id] = playerData;
 
         UiManager.InternalChatBox.AddMessage($"Player '{playerConnect.Username}' connected to the server");
 
@@ -562,23 +495,23 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a player disconnects from the server.
     /// </summary>
     /// <param name="playerDisconnect">The ClientPlayerDisconnect packet data.</param>
-    private void OnPlayerDisconnect(ClientPlayerDisconnect playerDisconnect) {
+    private static void OnPlayerDisconnect(ClientPlayerDisconnect playerDisconnect) {
         var id = playerDisconnect.Id;
         var username = playerDisconnect.Username;
 
         Logger.Info($"Received PlayerDisconnect data for ID: {id}, timed out: {playerDisconnect.TimedOut}");
 
         // Instruct the player manager to recycle the player object
-        _playerManager.RecyclePlayer(id);
+        PlayerManager.RecyclePlayer(id);
 
         // Destroy map icon
-        _mapManager.RemoveEntryForPlayer(id);
+        MapManager.RemoveEntryForPlayer(id);
 
         // Store a reference of the player data before removing it to pass to the API event
-        _playerData.TryGetValue(id, out var playerData);
+        PlayerData.TryGetValue(id, out var playerData);
 
         // Clear the player from the player data mapping
-        _playerData.Remove(id);
+        PlayerData.Remove(id);
 
         if (playerDisconnect.TimedOut) {
             UiManager.InternalChatBox.AddMessage($"Player '{username}' timed out");
@@ -598,7 +531,7 @@ internal class ClientManager : IClientManager {
     /// Callback method for when we receive that a player is already in the scene we are entering.
     /// </summary>
     /// <param name="alreadyInScene">The ClientPlayerAlreadyInScene packet data.</param>
-    private void OnPlayerAlreadyInScene(ClientPlayerAlreadyInScene alreadyInScene) {
+    private static void OnPlayerAlreadyInScene(ClientPlayerAlreadyInScene alreadyInScene) {
         Logger.Info("Received AlreadyInScene packet");
 
         foreach (var playerEnterScene in alreadyInScene.PlayerEnterSceneList) {
@@ -608,10 +541,10 @@ internal class ClientManager : IClientManager {
 
         if (alreadyInScene.SceneHost) {
             // Notify the entity manager that we are scene host
-            _entityManager.OnBecomeSceneHost();
+            EntityManager.OnBecomeSceneHost();
         } else {
             // Notify the entity manager that we are scene client (non-host)
-            _entityManager.OnBecomeSceneClient();
+            EntityManager.OnBecomeSceneClient();
         }
 
         // Whether there were players in the scene or not, we have now determined whether
@@ -623,20 +556,20 @@ internal class ClientManager : IClientManager {
     /// Callback method for when another player enters our scene.
     /// </summary>
     /// <param name="enterSceneData">The ClientPlayerEnterScene packet data.</param>
-    private void OnPlayerEnterScene(ClientPlayerEnterScene enterSceneData) {
+    private static void OnPlayerEnterScene(ClientPlayerEnterScene enterSceneData) {
         // Read ID from player data
         var id = enterSceneData.Id;
 
         Logger.Info($"Player {id} entered scene");
 
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+        if (!PlayerData.TryGetValue(id, out var playerData)) {
             playerData = new ClientPlayerData(id, enterSceneData.Username);
-            _playerData[id] = playerData;
+            PlayerData[id] = playerData;
         }
 
         playerData.IsInLocalScene = true;
 
-        _playerManager.SpawnPlayer(
+        PlayerManager.SpawnPlayer(
             playerData,
             enterSceneData.Username,
             enterSceneData.Position,
@@ -644,7 +577,7 @@ internal class ClientManager : IClientManager {
             enterSceneData.Team,
             enterSceneData.SkinId
         );
-        _animationManager.UpdatePlayerAnimation(id, enterSceneData.AnimationClipId, 0);
+        AnimationManager.UpdatePlayerAnimation(id, enterSceneData.AnimationClipId, 0);
 
         try {
             PlayerEnterSceneEvent?.Invoke(playerData);
@@ -658,18 +591,18 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a player leaves our scene.
     /// </summary>
     /// <param name="data">The generic client packet data.</param>
-    private void OnPlayerLeaveScene(GenericClientData data) {
+    private static void OnPlayerLeaveScene(GenericClientData data) {
         var id = data.Id;
 
         Logger.Info($"Player {id} left scene");
 
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+        if (!PlayerData.TryGetValue(id, out var playerData)) {
             Logger.Info($"Could not find player data for player with ID {id}");
             return;
         }
 
         // Recycle corresponding player
-        _playerManager.RecyclePlayer(id);
+        PlayerManager.RecyclePlayer(id);
 
         playerData.IsInLocalScene = false;
         foreach (Transform child in playerData.PlayerObject.transform) {
@@ -690,23 +623,23 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a player update is received.
     /// </summary>
     /// <param name="playerUpdate">The PlayerUpdate packet data.</param>
-    private void OnPlayerUpdate(PlayerUpdate playerUpdate) {
+    private static void OnPlayerUpdate(PlayerUpdate playerUpdate) {
         // Update the values of the player objects in the packet
         if (playerUpdate.UpdateTypes.Contains(PlayerUpdateType.Position)) {
-            _playerManager.UpdatePosition(playerUpdate.Id, playerUpdate.Position);
+            PlayerManager.UpdatePosition(playerUpdate.Id, playerUpdate.Position);
         }
 
         if (playerUpdate.UpdateTypes.Contains(PlayerUpdateType.Scale)) {
-            _playerManager.UpdateScale(playerUpdate.Id, playerUpdate.Scale);
+            PlayerManager.UpdateScale(playerUpdate.Id, playerUpdate.Scale);
         }
 
         if (playerUpdate.UpdateTypes.Contains(PlayerUpdateType.MapPosition)) {
-            _mapManager.UpdatePlayerIcon(playerUpdate.Id, playerUpdate.MapPosition);
+            MapManager.UpdatePlayerIcon(playerUpdate.Id, playerUpdate.MapPosition);
         }
 
         if (playerUpdate.UpdateTypes.Contains(PlayerUpdateType.Animation)) {
             foreach (var animationInfo in playerUpdate.AnimationInfos) {
-                _animationManager.OnPlayerAnimationUpdate(
+                AnimationManager.OnPlayerAnimationUpdate(
                     playerUpdate.Id,
                     animationInfo.ClipId,
                     animationInfo.Frame,
@@ -720,22 +653,22 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a player's map icon updates.
     /// </summary>
     /// <param name="playerMapUpdate">The PlayerMapUpdate packet data.</param>
-    private void OnPlayerMapUpdate(PlayerMapUpdate playerMapUpdate) {
-        _mapManager.UpdatePlayerHasIcon(playerMapUpdate.Id, playerMapUpdate.HasIcon);
+    private static void OnPlayerMapUpdate(PlayerMapUpdate playerMapUpdate) {
+        MapManager.UpdatePlayerHasIcon(playerMapUpdate.Id, playerMapUpdate.HasIcon);
     }
 
     /// <summary>
     /// Callback method for when an entity update is received.
     /// </summary>
     /// <param name="entityUpdate">The EntityUpdate packet data.</param>
-    private void OnEntityUpdate(EntityUpdate entityUpdate) {
+    private static void OnEntityUpdate(EntityUpdate entityUpdate) {
         // We only propagate entity updates to the entity manager if we have determined the scene host
         if (!_sceneHostDetermined) {
             return;
         }
 
         if (entityUpdate.UpdateTypes.Contains(EntityUpdateType.Position)) {
-            _entityManager.UpdateEntityPosition((EntityType) entityUpdate.EntityType, entityUpdate.Id,
+            EntityManager.UpdateEntityPosition((EntityType) entityUpdate.EntityType, entityUpdate.Id,
                 entityUpdate.Position);
         }
 
@@ -748,7 +681,7 @@ internal class ClientManager : IClientManager {
                 variables = new List<byte>();
             }
 
-            _entityManager.UpdateEntityState(
+            EntityManager.UpdateEntityState(
                 (EntityType) entityUpdate.EntityType,
                 entityUpdate.Id,
                 entityUpdate.State,
@@ -761,7 +694,7 @@ internal class ClientManager : IClientManager {
     /// Callback method for when the server settings are updated by the server.
     /// </summary>
     /// <param name="update">The <see cref="ServerSettingsUpdate"/> packet data.</param>
-    private void OnServerSettingsUpdated(ServerSettingsUpdate update) {
+    private static void OnServerSettingsUpdated(ServerSettingsUpdate update) {
         var pvpChanged = false;
         var bodyDamageChanged = false;
         var displayNamesChanged = false;
@@ -849,12 +782,12 @@ internal class ClientManager : IClientManager {
 
         // Only update the player manager if the either PvP or body damage have been changed
         if (pvpChanged || bodyDamageChanged || displayNamesChanged) {
-            _playerManager.OnServerSettingsUpdated(pvpChanged || bodyDamageChanged, displayNamesChanged);
+            PlayerManager.OnServerSettingsUpdated(pvpChanged || bodyDamageChanged, displayNamesChanged);
         }
 
         if (alwaysShowMapChanged || onlyCompassChanged) {
             if (!_serverSettings.AlwaysShowMapIcons && !_serverSettings.OnlyBroadcastMapIconWithWaywardCompass) {
-                _mapManager.RemoveAllIcons();
+                MapManager.RemoveAllIcons();
             }
         }
 
@@ -862,15 +795,15 @@ internal class ClientManager : IClientManager {
         if (teamsChanged) {
             // If the team setting was disabled, we reset all teams 
             if (!_serverSettings.TeamsEnabled) {
-                _playerManager.ResetAllTeams();
+                PlayerManager.ResetAllTeams();
             }
 
-            _uiManager.OnTeamSettingChange();
+            UiManager.OnTeamSettingChange();
         }
 
         // If the allow skins setting changed and it is no longer allowed, we reset all existing skins
         if (allowSkinsChanged && !_serverSettings.AllowSkins) {
-            _playerManager.ResetAllPlayerSkins();
+            PlayerManager.ResetAllPlayerSkins();
         }
     }
 
@@ -879,14 +812,16 @@ internal class ClientManager : IClientManager {
     /// </summary>
     /// <param name="oldScene">The old scene instance.</param>
     /// <param name="newScene">The new scene instance.</param>
-    private void OnSceneChange(Scene oldScene, Scene newScene) {
+    [HarmonyPatch(typeof(SceneManager), nameof(SceneManager.Internal_ActiveSceneChanged))]
+    [HarmonyPostfix]
+    private static void OnSceneChange(Scene oldScene, Scene newScene) {
         Logger.Info($"Scene changed from {oldScene.name} to {newScene.name}");
 
         // Always recycle existing players, because we changed scenes
-        _playerManager.RecycleAllPlayers();
+        PlayerManager.RecycleAllPlayers();
 
         // For each known player set that they are not in our scene anymore
-        foreach (var playerData in _playerData.Values) {
+        foreach (var playerData in PlayerData.Values) {
             playerData.IsInLocalScene = false;
         }
 
@@ -912,10 +847,10 @@ internal class ClientManager : IClientManager {
     /// Callback method on the HeroController#Update method.
     /// </summary>
     /// <param name="orig">The original method.</param>
-    /// <param name="self">The HeroController instance.</param>
-    private void OnPlayerUpdate(On.HeroController.orig_Update orig, HeroController self) {
-        // Make sure the original method executes
-        orig(self);
+    /// <param name="__instance">The HeroController instance.</param>
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.Update))]
+    [HarmonyPostfix]
+    private static void Postfixpdate(HeroController __instance) {
 
         // Ignore player position updates on non-gameplay scenes
         var currentSceneName = SceneUtil.GetCurrentSceneName();
@@ -985,14 +920,14 @@ internal class ClientManager : IClientManager {
     /// Callback method for when a chat message is received.
     /// </summary>
     /// <param name="chatMessage">The ChatMessage packet data.</param>
-    private void OnChatMessage(ChatMessage chatMessage) {
+    private static void OnChatMessage(ChatMessage chatMessage) {
         UiManager.InternalChatBox.AddMessage(chatMessage.Message);
     }
 
     /// <summary>
     /// Callback method for when the net client is timed out.
     /// </summary>
-    private void OnTimeout() {
+    private static void OnTimeout() {
         if (!_netClient.IsConnected) {
             return;
         }
@@ -1006,7 +941,10 @@ internal class ClientManager : IClientManager {
     /// <summary>
     /// Callback method for when the local user quits the application.
     /// </summary>
-    private void OnApplicationQuit() {
+
+    [HarmonyPatch(typeof(global::GameManager), nameof(global::GameManager.OnApplicationQuit))]
+    [HarmonyPostfix]
+    private static void OnApplicationQuit() {
         if (!_netClient.IsConnected) {
             return;
         }
@@ -1022,20 +960,20 @@ internal class ClientManager : IClientManager {
     #region IClientManager methods
 
     /// <inheritdoc />
-    public IClientPlayer GetPlayer(ushort id) {
+    public static IClientPlayer GetPlayer(ushort id) {
         return TryGetPlayer(id, out var player) ? player : null;
     }
 
     /// <inheritdoc />
-    public bool TryGetPlayer(ushort id, out IClientPlayer player) {
-        var found = _playerData.TryGetValue(id, out var playerData);
+    public static bool TryGetPlayer(ushort id, out IClientPlayer player) {
+        var found = PlayerData.TryGetValue(id, out var playerData);
         player = playerData;
 
         return found;
     }
 
     /// <inheritdoc />
-    public void ChangeTeam(Team team) {
+    public static void ChangeTeam(Team team) {
         if (!_netClient.IsConnected) {
             throw new InvalidOperationException("Client is not connected, cannot change team");
         }
@@ -1044,7 +982,7 @@ internal class ClientManager : IClientManager {
     }
 
     /// <inheritdoc />
-    public void ChangeSkin(byte skinId) {
+    public static void ChangeSkin(byte skinId) {
         if (!_netClient.IsConnected) {
             throw new InvalidOperationException("Client is not connected, cannot change skin");
         }
