@@ -2,7 +2,6 @@ using System;
 using GlobalEnums;
 using Hkmp.Api.Client;
 using Hkmp.Game.Settings;
-using Hkmp.Imports;
 using Hkmp.Ui.Component;
 using Hkmp.Ui.Resources;
 using Hkmp.Util;
@@ -166,7 +165,7 @@ internal class ChatBox : IChatBox {
         }
 
         if (_isOpen) {
-            if (InputHandler.Instance.inputActions.pause.WasPressed) {
+            if (InputHandler.Instance.inputActions.Pause.WasPressed) {
                 HideChatInput();
             }
         } else if (Input.GetKeyDown(modSettings.OpenChatKey)) {
@@ -175,7 +174,7 @@ internal class ChatBox : IChatBox {
             var heroController = HeroController.instance;
             if (gameManager == null
                 || uiManager == null
-                || gameManager.gameState != GameState.PLAYING
+                || gameManager.GameState != GameState.PLAYING
                 || uiManager.uiState != UIState.PLAYING
                 // If the hero is charging their nail and chat opens, it will cause a flashing effect
                 || (heroController != null && heroController.cState.nailCharging)
@@ -199,7 +198,6 @@ internal class ChatBox : IChatBox {
             InputHandler.Instance.StopMouseInput();
             InputHandler.Instance.PreventPause();
             SetEnabledHeroActions(false);
-            DebugMod.SetLockKeyBinds(true);
         }
     }
 
@@ -217,10 +215,9 @@ internal class ChatBox : IChatBox {
 
         InputHandler.Instance.EnableMouseInput();
         // In case we were using keys in chat that also correspond to input actions
-        InputHandler.Instance.inputActions.pause.ClearInputState();
+        InputHandler.Instance.inputActions.Pause.ClearInputState();
         InputHandler.Instance.AllowPause();
         SetEnabledHeroActions(true);
-        DebugMod.SetLockKeyBinds(false);
     }
 
     /// <inheritdoc />
@@ -319,31 +316,28 @@ internal class ChatBox : IChatBox {
 
         // Disable all input actions for the hero, except for the pause actions
         // which we use to listen for closing the chat again
-        heroActions.left.Enabled = enabled;
-        heroActions.right.Enabled = enabled;
-        heroActions.up.Enabled = enabled;
-        heroActions.down.Enabled = enabled;
-        heroActions.menuSubmit.Enabled = enabled;
-        heroActions.menuCancel.Enabled = enabled;
-        heroActions.rs_up.Enabled = enabled;
-        heroActions.rs_down.Enabled = enabled;
-        heroActions.rs_left.Enabled = enabled;
-        heroActions.rs_right.Enabled = enabled;
-        heroActions.jump.Enabled = enabled;
-        heroActions.evade.Enabled = enabled;
-        heroActions.dash.Enabled = enabled;
-        heroActions.superDash.Enabled = enabled;
-        heroActions.dreamNail.Enabled = enabled;
-        heroActions.attack.Enabled = enabled;
-        heroActions.cast.Enabled = enabled;
-        heroActions.focus.Enabled = enabled;
-        heroActions.quickMap.Enabled = enabled;
-        heroActions.quickCast.Enabled = enabled;
-        heroActions.textSpeedup.Enabled = enabled;
-        heroActions.skipCutscene.Enabled = enabled;
-        heroActions.openInventory.Enabled = enabled;
-        heroActions.paneRight.Enabled = enabled;
-        heroActions.paneLeft.Enabled = enabled;
+        heroActions.Left.Enabled = enabled;
+        heroActions.Right.Enabled = enabled;
+        heroActions.Up.Enabled = enabled;
+        heroActions.Down.Enabled = enabled;
+        heroActions.MenuSubmit.Enabled = enabled;
+        heroActions.MenuCancel.Enabled = enabled;
+        heroActions.RsUp.Enabled = enabled;
+        heroActions.RsDown.Enabled = enabled;
+        heroActions.RsLeft.Enabled = enabled;
+        heroActions.RsRight.Enabled = enabled;
+        heroActions.Jump.Enabled = enabled;
+        heroActions.Evade.Enabled = enabled;
+        heroActions.Dash.Enabled = enabled;
+        heroActions.SuperDash.Enabled = enabled;
+        heroActions.DreamNail.Enabled = enabled;
+        heroActions.Attack.Enabled = enabled;
+        heroActions.Cast.Enabled = enabled;
+        heroActions.QuickMap.Enabled = enabled;
+        heroActions.QuickCast.Enabled = enabled;
+        heroActions.OpenInventory.Enabled = enabled;
+        heroActions.PaneRight.Enabled = enabled;
+        heroActions.PaneLeft.Enabled = enabled;
     }
 
     /// <summary>

@@ -14,20 +14,15 @@ internal class ConnectCommand : IClientCommand {
     /// <inheritdoc />
     public string[] Aliases => new[] { "/disconnect" };
 
-    /// <summary>
-    /// The client manager instance.
-    /// </summary>
-    private readonly ClientManager _clientManager;
 
-    public ConnectCommand(ClientManager clientManager) {
-        _clientManager = clientManager;
+    public ConnectCommand() {
     }
 
     /// <inheritdoc />
     public void Execute(string[] arguments) {
         var command = arguments[0];
         if (command == Aliases[0]) {
-            _clientManager.Disconnect();
+            ClientManager.Disconnect();
             UiManager.InternalChatBox.AddMessage("You are disconnected from the server");
             return;
         }
@@ -48,7 +43,7 @@ internal class ConnectCommand : IClientCommand {
 
         var username = arguments[3];
 
-        _clientManager.Connect(address, port, username);
+        ClientManager.Connect(address, port, username);
         UiManager.InternalChatBox.AddMessage($"Trying to connect to {address}:{port} as {username}...");
     }
 

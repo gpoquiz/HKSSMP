@@ -63,7 +63,7 @@ internal static class ClientManager {
     /// <summary>
     /// Dictionary containing a mapping from user IDs to the client player data.
     /// </summary>
-    private static readonly Dictionary<ushort, ClientPlayerData> PlayerData = new();
+    public static readonly Dictionary<ushort, ClientPlayerData> PlayerData = new();
 
     #endregion
 
@@ -136,6 +136,8 @@ internal static class ClientManager {
         ServerSettings serverSettings,
         ModSettings modSettings
     ) {
+
+        PlayerManager.Initialize(serverSettings);
 
         var clientApi = new ClientApi(netClient);
 

@@ -12,7 +12,7 @@ using Vector2 = Hkmp.Math.Vector2;
 namespace Hkmp.Game.Client.Entity;
 
 internal abstract class Entity : IEntity {
-    private readonly NetClient _netClient;
+    private readonly NetClient NetClient;
     private readonly EntityType _entityType;
     private readonly byte _entityId;
 
@@ -31,12 +31,10 @@ internal abstract class Entity : IEntity {
     protected PlayMakerFSM Fsm;
 
     protected Entity(
-        NetClient netClient,
         EntityType entityType,
         byte entityId,
         GameObject gameObject
     ) {
-        _netClient = netClient;
         _entityType = entityType;
         _entityId = entityId;
         GameObject = gameObject;
@@ -60,7 +58,7 @@ internal abstract class Entity : IEntity {
 
         var transformPos = GameObject.transform.position;
 
-        _netClient.UpdateManager.UpdateEntityPosition(
+        NetClient.UpdateManager.UpdateEntityPosition(
             _entityType,
             _entityId,
             new Vector2(transformPos.x, transformPos.y)
@@ -169,11 +167,11 @@ internal abstract class Entity : IEntity {
     }
 
     protected void SendStateUpdate(byte state) {
-        _netClient.UpdateManager.UpdateEntityState(_entityType, _entityId, state);
+        NetClient.UpdateManager.UpdateEntityState(_entityType, _entityId, state);
     }
 
     protected void SendStateUpdate(byte state, List<byte> variables) {
-        _netClient.UpdateManager.UpdateEntityStateAndVariables(_entityType, _entityId, state, variables);
+        NetClient.UpdateManager.UpdateEntityStateAndVariables(_entityType, _entityId, state, variables);
     }
 
     protected void RemoveOutgoingTransitions(string stateName) {

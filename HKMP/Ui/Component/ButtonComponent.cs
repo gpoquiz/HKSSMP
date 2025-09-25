@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Hkmp.Ui.Resources;
 using UnityEngine;
 using UnityEngine.EventSystems;

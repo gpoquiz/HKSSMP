@@ -1,4 +1,4 @@
-﻿using Hkmp.Game.Client;
+using Hkmp.Game.Client;
 using Hkmp.Game.Server;
 using Hkmp.Game.Settings;
 using Hkmp.Networking.Client;
@@ -47,11 +47,6 @@ internal class GameManager {
         );
         serverManager.Initialize();
 
-        new ClientManager(
-            netClient,
-            serverManager,
-            clientServerSettings,
-            modSettings
-        );
+        ClientManager.Initialize(netClient, serverManager, serverServerSettings, modSettings);
     }
 }
