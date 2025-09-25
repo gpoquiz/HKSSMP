@@ -40,19 +40,6 @@ namespace HkmpServer.Logging {
         }
 
         /// <inheritdoc />
-        public override void Fine(string message) {
-            if (!LoggableLevels.Contains(Level.Fine)) {
-                return;
-            }
-            
-#if DEBUG
-            _consoleInputManager.WriteLine($"[FINE] [{GetOriginClassName()}] {message}");
-#else
-            _consoleInputManager.WriteLine($"[FINE] {message}");
-#endif
-        }
-
-        /// <inheritdoc />
         public override void Debug(string message) {
             if (!LoggableLevels.Contains(Level.Debug)) {
                 return;

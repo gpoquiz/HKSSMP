@@ -24,7 +24,6 @@ internal static class Logger {
     /// <param name="message">The string message.</param>
     public static void Fine(string message) {
         foreach (var logger in Loggers) {
-            logger.Fine(message);
         }
     }
 

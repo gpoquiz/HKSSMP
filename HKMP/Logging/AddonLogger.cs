@@ -20,11 +20,6 @@ internal class AddonLogger : ILogger {
     }
 
     /// <inheritdoc />
-    public void Fine(string message) {
-        Logger.Fine(message);
-    }
-
-    /// <inheritdoc />
     public void Debug(string message) {
         Logger.Debug(message);
     }

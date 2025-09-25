@@ -40,9 +40,6 @@ public abstract class BaseLogger : ILogger {
     public abstract void Info(string message);
 
     /// <inheritdoc />
-    public abstract void Fine(string message);
-
-    /// <inheritdoc />
     public abstract void Debug(string message);
 
     /// <inheritdoc />

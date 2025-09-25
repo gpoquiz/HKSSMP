@@ -1,3 +1,5 @@
+using BepInEx.Logging;
+
 namespace Hkmp.Logging;
 
 /// <summary>
@@ -9,12 +11,6 @@ public interface ILogger {
     /// </summary>
     /// <param name="message">The string message.</param>
     void Info(string message);
-
-    /// <summary>
-    /// Log a message as fine information.
-    /// </summary>
-    /// <param name="message">The string message.</param>
-    void Fine(string message);
 
     /// <summary>
     /// Log a message as debug information.

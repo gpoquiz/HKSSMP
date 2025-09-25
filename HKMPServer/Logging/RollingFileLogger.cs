@@ -173,15 +173,6 @@ namespace HkmpServer.Logging {
         }
 
         /// <inheritdoc />
-        public override void Fine(string message) {
-#if DEBUG
-            LogMessage($"[FINE] [{GetOriginClassName()}] {message}");
-#else
-            LogMessage($"[FINE] {message}");
-#endif
-        }
-
-        /// <inheritdoc />
         public override void Debug(string message) {
 #if DEBUG
             LogMessage($"[DEBUG] [{GetOriginClassName()}] {message}");
