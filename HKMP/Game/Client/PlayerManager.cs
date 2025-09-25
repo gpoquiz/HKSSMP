@@ -1,5 +1,5 @@
-using System;
-using System.Collections.Generic;
+using HarmonyLib;
+using Hkmp.Api.Server;
 using Hkmp.Fsm;
 using Hkmp.Game.Client.Skin;
 using Hkmp.Game.Settings;
@@ -7,6 +7,8 @@ using Hkmp.Networking.Packet;
 using Hkmp.Networking.Packet.Data;
 using Hkmp.Ui.Resources;
 using Hkmp.Util;
+using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using Logger = Hkmp.Logging.Logger;
@@ -18,7 +20,7 @@ namespace Hkmp.Game.Client;
 /// <summary>
 /// Class that manages player objects, spawning and recycling thereof.
 /// </summary>
-internal class PlayerManager {
+internal static class PlayerManager {
     /// <summary>
     /// The name of the game object for the player container prefab.
     /// </summary>
@@ -47,72 +49,52 @@ internal class PlayerManager {
     /// <summary>
     /// The current server settings.
     /// </summary>
-    private readonly ServerSettings _serverSettings;
-
-    /// <summary>
-    /// The skin manager instance.
-    /// </summary>
-    private readonly SkinManager _skinManager;
-
-    /// <summary>
-    /// Reference to the client player data dictionary (<see cref="ClientManager._playerData"/>)
-    /// from <see cref="ClientManager"/>.
-    /// </summary>
-    private readonly Dictionary<ushort, ClientPlayerData> _playerData;
+    private static ServerSettings _serverSettings;
 
     /// <summary>
     /// The team that our local player is on.
     /// </summary>
-    public Team LocalPlayerTeam { get; private set; } = Team.None;
+    public static Team LocalPlayerTeam { get; private set; } = Team.None;
 
     /// <summary>
     /// The player container prefab GameObject.
     /// </summary>
-    private GameObject _playerContainerPrefab;
+    private static GameObject _playerContainerPrefab;
 
     /// <summary>
     /// A queue of pre-instantiated players that will be used when spawning a player.
     /// </summary>
-    private readonly Queue<GameObject> _inactivePlayers;
+    private static readonly Queue<GameObject> _inactivePlayers = new();
 
     /// <summary>
     /// The collection of active players spawned from and not in the player pool.
     /// </summary>
-    private readonly Dictionary<ushort, GameObject> _activePlayers;
+    private static readonly Dictionary<ushort, GameObject> _activePlayers = new();
 
-    public PlayerManager(
-        PacketManager packetManager,
-        ServerSettings serverSettings,
-        Dictionary<ushort, ClientPlayerData> playerData
-    ) {
+    public static void Initialize(
+        ServerSettings serverSettings) {
+
         _serverSettings = serverSettings;
-
-        _skinManager = new SkinManager();
-
-        _playerData = playerData;
-
-        _inactivePlayers = new Queue<GameObject>();
-        _activePlayers = new Dictionary<ushort, GameObject>();
-
-        On.HeroController.Start += (orig, self) => {
-            orig(self);
-
-            if (_playerContainerPrefab == null) {
-                CreatePlayerPool();
-            }
-        };
-
         // Register packet handlers
-        packetManager.RegisterClientPacketHandler<ClientPlayerTeamUpdate>(ClientPacketId.PlayerTeamUpdate,
+        PacketManager.RegisterClientPacketHandler<ClientPlayerTeamUpdate>(ClientPacketId.PlayerTeamUpdate,
             OnPlayerTeamUpdate);
-        packetManager.RegisterClientPacketHandler<ClientPlayerSkinUpdate>(ClientPacketId.PlayerSkinUpdate,
+        PacketManager.RegisterClientPacketHandler<ClientPlayerSkinUpdate>(ClientPacketId.PlayerSkinUpdate,
             OnPlayerSkinUpdate);
     }
 
+
+    [HarmonyPatch(typeof(HeroController), nameof(HeroController.Start))]
+    [HarmonyPostfix]
+    private static void PostfixStart() {
+
+        if (_playerContainerPrefab == null) {
+            CreatePlayerPool();
+        }
+    }
     /// <summary>
     /// Create the initial pool of player objects.
     /// </summary>
-    private void CreatePlayerPool() {
+    private static void CreatePlayerPool() {
         // Create a player container prefab, used to spawn players
         _playerContainerPrefab = new GameObject(PlayerContainerPrefabName);
 
@@ -121,7 +103,6 @@ internal class PlayerManager {
         var playerPrefab = new GameObject(PlayerObjectPrefabName,
             typeof(BoxCollider2D),
             typeof(DamageHero),
-            typeof(EnemyHitEffectsUninfected),
             typeof(MeshFilter),
             typeof(MeshRenderer),
             typeof(NonBouncer),
@@ -180,7 +161,7 @@ internal class PlayerManager {
     /// Create a new player container object from the <see cref="_playerContainerPrefab"/> prefab.
     /// </summary>
     /// <returns>A new GameObject representing the player container.</returns>
-    private GameObject CreateNewPlayerContainer() {
+    private static GameObject CreateNewPlayerContainer() {
         var playerContainer = Object.Instantiate(_playerContainerPrefab);
         Object.DontDestroyOnLoad(playerContainer);
         playerContainer.name = PlayerContainerName;
@@ -195,8 +176,8 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="id">The ID of the player.</param>
     /// <param name="position">The new position of the player.</param>
-    public void UpdatePosition(ushort id, Vector2 position) {
-        if (!_playerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
+    public static void UpdatePosition(ushort id, Vector2 position) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
             // Logger.Info($"Tried to update position for ID {id} while player data did not exists");
             return;
         }
@@ -215,8 +196,8 @@ internal class PlayerManager {
     /// <param name="id">The ID of the player.</param>
     /// <param name="scale">The new scale as a boolean, true indicating a X scale of 1,
     /// false indicating a X scale of -1.</param>
-    public void UpdateScale(ushort id, bool scale) {
-        if (!_playerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
+    public static void UpdateScale(ushort id, bool scale) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
             // Logger.Info($"Tried to update scale for ID {id} while player data did not exists");
             return;
         }
@@ -231,7 +212,7 @@ internal class PlayerManager {
     /// <param name="playerObject">The GameObject representing the player.</param>
     /// <param name="scale">The new scale as a boolean, true indicating a X scale of 1,
     /// false indicating a X scale of -1.</param>
-    private void SetPlayerObjectBoolScale(GameObject playerObject, bool scale) {
+    private static void SetPlayerObjectBoolScale(GameObject playerObject, bool scale) {
         if (playerObject == null) {
             return;
         }
@@ -254,8 +235,8 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="id">The player ID.</param>
     /// <returns>The GameObject for the player.</returns>
-    public GameObject GetPlayerObject(ushort id) {
-        if (!_playerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
+    public static GameObject GetPlayerObject(ushort id) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData) || !playerData.IsInLocalScene) {
             Logger.Debug($"Tried to get the player data that does not exists for ID {id}");
             return null;
         }
@@ -267,7 +248,7 @@ internal class PlayerManager {
     /// Callback method for when the local user disconnects. Will reset all player related things
     /// to their default values.
     /// </summary>
-    public void OnDisconnect() {
+    public static void OnDisconnect() {
         // Reset the local player's team
         LocalPlayerTeam = Team.None;
 
@@ -278,15 +259,15 @@ internal class PlayerManager {
         RemoveNameFromLocalPlayer();
 
         // Reset the skin of the local player
-        _skinManager.ResetLocalPlayerSkin();
+        SkinManager.ResetLocalPlayerSkin();
     }
 
     /// <summary>
     /// Recycle the player container of the player with the given ID back into the queue.
     /// </summary>
     /// <param name="id">The ID of the player.</param>
-    public void RecyclePlayer(ushort id) {
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+    public static void RecyclePlayer(ushort id) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData)) {
             Logger.Debug($"Tried to recycle player that does not exists for ID {id}");
             return;
         }
@@ -298,7 +279,7 @@ internal class PlayerManager {
     /// Recycle the player container of the player with the given player data.
     /// </summary>
     /// <param name="playerData">The player data of the player.</param>
-    private void RecyclePlayerByData(ClientPlayerData playerData) {
+    private static void RecyclePlayerByData(ClientPlayerData playerData) {
         // First reset the player
         ResetPlayer(playerData);
 
@@ -320,8 +301,8 @@ internal class PlayerManager {
     /// <summary>
     /// Recycle all existing players. <seealso cref="RecyclePlayer"/>
     /// </summary>
-    public void RecycleAllPlayers() {
-        foreach (var id in _playerData.Keys) {
+    public static void RecycleAllPlayers() {
+        foreach (var id in ClientManager.PlayerData.Keys) {
             // Recycle player
             RecyclePlayer(id);
         }
@@ -331,7 +312,7 @@ internal class PlayerManager {
     /// Reset the player with the given player data.
     /// </summary>
     /// <param name="playerData">The player data of the player.</param>
-    private void ResetPlayer(ClientPlayerData playerData) {
+    private static void ResetPlayer(ClientPlayerData playerData) {
         var container = playerData.PlayerContainer;
         if (container == null) {
             return;
@@ -344,7 +325,7 @@ internal class PlayerManager {
     /// Reset the given player container by removing all game objects not inherent to it.
     /// </summary>
     /// <param name="playerContainer">The game object representing the player container.</param>
-    private void ResetPlayerContainer(GameObject playerContainer) {
+    private static void ResetPlayerContainer(GameObject playerContainer) {
         // Destroy all descendants and components that weren't originally on the container object
         foreach (Transform child in playerContainer.transform) {
             if (child.name != PlayerObjectPrefabName) {
@@ -373,7 +354,7 @@ internal class PlayerManager {
     /// <param name="scale">The boolean representing the scale of the player.</param>
     /// <param name="team">The team the player is on.</param>
     /// <param name="skinId">The ID of the skin the player is using.</param>
-    public void SpawnPlayer(
+    public static void SpawnPlayer(
         ClientPlayerData playerData,
         string name,
         Vector2 position,
@@ -411,7 +392,7 @@ internal class PlayerManager {
         AddNameToPlayer(playerContainer, name, team);
 
         // Let the SkinManager update the skin
-        _skinManager.UpdatePlayerSkin(playerObject, skinId);
+        SkinManager.UpdatePlayerSkin(playerObject, skinId);
 
         // Store the player data
         playerData.PlayerContainer = playerContainer;
@@ -436,7 +417,7 @@ internal class PlayerManager {
     /// Create a unique copy of a player object's sprite animator so that skins are unique to each player.
     /// </summary>
     /// <param name="playerObject">The player object with the sprite animator component.</param>
-    private void MakeUniqueSpriteAnimator(GameObject playerObject) {
+    private static void MakeUniqueSpriteAnimator(GameObject playerObject) {
         var localPlayer = HeroController.instance;
         // Copy over mesh filter variables
         var meshFilter = playerObject.GetComponent<MeshFilter>();
@@ -469,7 +450,7 @@ internal class PlayerManager {
     /// <param name="playerContainer">The GameObject for the player container.</param>
     /// <param name="name">The username that the object should have.</param>
     /// <param name="team">The team that the player is on.</param>
-    public void AddNameToPlayer(GameObject playerContainer, string name, Team team = Team.None) {
+    public static void AddNameToPlayer(GameObject playerContainer, string name, Team team = Team.None) {
         // Create a name object to set the username to, slightly above the player object
         var nameObject = playerContainer.FindGameObjectInChildren(UsernameObjectName);
 
@@ -491,7 +472,7 @@ internal class PlayerManager {
     /// Callback method for when a player team update is received.
     /// </summary>
     /// <param name="playerTeamUpdate">The ClientPlayerTeamUpdate packet data.</param>
-    private void OnPlayerTeamUpdate(ClientPlayerTeamUpdate playerTeamUpdate) {
+    private static void OnPlayerTeamUpdate(ClientPlayerTeamUpdate playerTeamUpdate) {
         var id = playerTeamUpdate.Id;
         var team = playerTeamUpdate.Team;
 
@@ -503,10 +484,10 @@ internal class PlayerManager {
     /// <summary>
     /// Reset the local player's team to be None and reset all existing player names and hit-boxes.
     /// </summary>
-    public void ResetAllTeams() {
+    public static void ResetAllTeams() {
         OnLocalPlayerTeamUpdate(Team.None);
 
-        foreach (var id in _playerData.Keys) {
+        foreach (var id in ClientManager.PlayerData.Keys) {
             UpdatePlayerTeam(id, Team.None);
         }
     }
@@ -516,8 +497,8 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="id">The ID of the player.</param>
     /// <param name="team">The team that the player should have.</param>
-    private void UpdatePlayerTeam(ushort id, Team team) {
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+    private static void UpdatePlayerTeam(ushort id, Team team) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData)) {
             Logger.Debug($"Tried to update team for ID {id} while player data did not exists");
             return;
         }
@@ -551,7 +532,7 @@ internal class PlayerManager {
     /// Callback method for when the team of the local player updates.
     /// </summary>
     /// <param name="team">The new team of the local player.</param>
-    public void OnLocalPlayerTeamUpdate(Team team) {
+    public static void OnLocalPlayerTeamUpdate(Team team) {
         LocalPlayerTeam = team;
 
         var nameObject = HeroController.instance.gameObject.FindGameObjectInChildren(UsernameObjectName);
@@ -559,7 +540,7 @@ internal class PlayerManager {
         var textMeshObject = nameObject.GetComponent<TextMeshPro>();
         ChangeNameColor(textMeshObject, team);
 
-        foreach (var playerData in _playerData.Values) {
+        foreach (var playerData in ClientManager.PlayerData.Values) {
             if (!playerData.IsInLocalScene) {
                 continue;
             }
@@ -582,8 +563,8 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="id">The ID of the player.</param>
     /// <returns>The team of the player.</returns>
-    public Team GetPlayerTeam(ushort id) {
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+    public static Team GetPlayerTeam(ushort id) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData)) {
             return Team.None;
         }
 
@@ -594,39 +575,39 @@ internal class PlayerManager {
     /// Update the skin of the local player.
     /// </summary>
     /// <param name="skinId">The ID of the skin to update to.</param>
-    public void UpdateLocalPlayerSkin(byte skinId) {
-        _skinManager.UpdateLocalPlayerSkin(skinId);
+    public static void UpdateLocalPlayerSkin(byte skinId) {
+        SkinManager.UpdateLocalPlayerSkin(skinId);
     }
 
     /// <summary>
     /// Callback method for when a player updates their skin.
     /// </summary>
     /// <param name="playerSkinUpdate">The ClientPlayerSkinUpdate packet data.</param>
-    private void OnPlayerSkinUpdate(ClientPlayerSkinUpdate playerSkinUpdate) {
+    private static void OnPlayerSkinUpdate(ClientPlayerSkinUpdate playerSkinUpdate) {
         var id = playerSkinUpdate.Id;
         var skinId = playerSkinUpdate.SkinId;
 
-        if (!_playerData.TryGetValue(id, out var playerData)) {
+        if (!ClientManager.PlayerData.TryGetValue(id, out var playerData)) {
             Logger.Debug($"Received PlayerSkinUpdate for ID: {id}, skinId: {skinId}");
             return;
         }
 
         playerData.SkinId = skinId;
 
-        _skinManager.UpdatePlayerSkin(playerData.PlayerObject, skinId);
+        SkinManager.UpdatePlayerSkin(playerData.PlayerObject, skinId);
     }
 
     /// <summary>
     /// Reset the skins of all players.
     /// </summary>
-    public void ResetAllPlayerSkins() {
+    public static void ResetAllPlayerSkins() {
         // For each registered player, reset their skin
-        foreach (var playerData in _playerData.Values) {
-            _skinManager.ResetPlayerSkin(playerData.PlayerObject);
+        foreach (var playerData in ClientManager.PlayerData.Values) {
+            SkinManager.ResetPlayerSkin(playerData.PlayerObject);
         }
 
         // Also reset our local players skin
-        _skinManager.ResetLocalPlayerSkin();
+        SkinManager.ResetLocalPlayerSkin();
     }
 
     /// <summary>
@@ -634,7 +615,7 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="textMeshObject">The TextMeshPro object representing the name.</param>
     /// <param name="team">The team that the name should be colored after.</param>
-    private void ChangeNameColor(TextMeshPro textMeshObject, Team team) {
+    private static void ChangeNameColor(TextMeshPro textMeshObject, Team team) {
         switch (team) {
             case Team.Moss:
                 textMeshObject.color = new Color(0f / 255f, 150f / 255f, 0f / 255f);
@@ -657,7 +638,7 @@ internal class PlayerManager {
     /// <summary>
     /// Remove the name from the local player.
     /// </summary>
-    private void RemoveNameFromLocalPlayer() {
+    private static void RemoveNameFromLocalPlayer() {
         if (HeroController.instance != null) {
             RemoveNameFromPlayer(HeroController.instance.gameObject);
         }
@@ -667,7 +648,7 @@ internal class PlayerManager {
     /// Remove the name of a given player container.
     /// </summary>
     /// <param name="playerContainer">The GameObject for the player container.</param>
-    private void RemoveNameFromPlayer(GameObject playerContainer) {
+    private static void RemoveNameFromPlayer(GameObject playerContainer) {
         // Get the name object
         var nameObject = playerContainer.FindGameObjectInChildren(UsernameObjectName);
 
@@ -682,10 +663,10 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="pvpOrBodyDamageChanged">Whether the PvP or body damage settings changed.</param>
     /// <param name="displayNamesChanged">Whether the display names setting changed.</param>
-    public void OnServerSettingsUpdated(bool pvpOrBodyDamageChanged, bool displayNamesChanged) {
+    public static void OnServerSettingsUpdated(bool pvpOrBodyDamageChanged, bool displayNamesChanged) {
         if (pvpOrBodyDamageChanged) {
             // Loop over all player objects
-            foreach (var playerData in _playerData.Values) {
+            foreach (var playerData in ClientManager.PlayerData.Values) {
                 if (playerData.IsInLocalScene) {
                     // Enable the DamageHero component based on whether both PvP and body damage are enabled
                     ToggleBodyDamage(playerData, _serverSettings.IsPvpEnabled && _serverSettings.IsBodyDamageEnabled);
@@ -694,7 +675,7 @@ internal class PlayerManager {
         }
 
         if (displayNamesChanged) {
-            foreach (var playerData in _playerData.Values) {
+            foreach (var playerData in ClientManager.PlayerData.Values) {
                 var nameObject = playerData.PlayerContainer.FindGameObjectInChildren(UsernameObjectName);
                 if (nameObject != null) {
                     nameObject.SetActive(_serverSettings.DisplayNames);
@@ -716,7 +697,7 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="playerContainer">The player container to add the username object as a child of.</param>
     /// <returns>The new GameObject that was created for the username.</returns>
-    private GameObject CreateUsername(GameObject playerContainer) {
+    private static GameObject CreateUsername(GameObject playerContainer) {
         var nameObject = new GameObject(UsernameObjectName);
 
         nameObject.transform.position = playerContainer.transform.position + Vector3.up * 1.25f;
@@ -729,7 +710,9 @@ internal class PlayerManager {
         var textMeshObject = nameObject.AddComponent<TextMeshPro>();
         textMeshObject.text = UsernameObjectName;
         textMeshObject.alignment = TextAlignmentOptions.Center;
-        textMeshObject.font = FontManager.InGameNameFont;
+        /*
+        textMeshObject.font = Resources.FontManager.InGameNameFont;
+        */
         textMeshObject.fontSize = 22;
         textMeshObject.outlineWidth = 0.2f;
         textMeshObject.outlineColor = Color.black;
@@ -744,7 +727,7 @@ internal class PlayerManager {
     /// </summary>
     /// <param name="playerData">The client player data.</param>
     /// <param name="enabled">Whether body damage is enabled.</param>
-    private void ToggleBodyDamage(ClientPlayerData playerData, bool enabled) {
+    private static void ToggleBodyDamage(ClientPlayerData playerData, bool enabled) {
         var playerObject = playerData.PlayerObject;
         if (playerObject == null) {
             return;
