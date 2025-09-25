@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <ProjectGuid>{5AB0E450-3F37-4715-916F-CF2EC62D398B}</ProjectGuid>
+        <RootNamespace>HkssmpServer</RootNamespace>
+        <AssemblyName>HKSSMPServer</AssemblyName>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <OutputType>exe</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="..\HKSSMP\bin\$(Configuration)\netstandard2.1\HKSSMP.dll">
+            <Link>Lib\HKSSMP.dll</Link>
+        </EmbeddedResource>
+        <EmbeddedResource Include="..\HKSSMP\bin\$(Configuration)\netstandard2.1\HKSSMP.pdb">
+            <Link>Lib\HKSSMP.pdb</Link>
+        </EmbeddedResource>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\HKSSMP\HKSSMP.csproj">
+            <Project>{f34118b2-515d-4c33-88e6-9cfef2ad5a15}</Project>
+            <Name>HKMP</Name>
+            <Private>false</Private>
+        </ProjectReference>
+    </ItemGroup>
+</Project>

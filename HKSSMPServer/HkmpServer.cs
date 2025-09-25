@@ -1,11 +1,10 @@
-﻿using Hkmp;
+using Hkmp;
 using Hkmp.Game.Settings;
 using Hkmp.Logging;
 using Hkmp.Networking.Packet;
 using Hkmp.Networking.Server;
 using HkmpServer.Command;
 using HkmpServer.Logging;
-
 namespace HkmpServer {
     /// <summary>
     /// The HKMP Server class.
@@ -56,11 +55,10 @@ namespace HkmpServer {
         ) {
             Logger.Info($"Starting server v{Version.String}");
 
-            var packetManager = new PacketManager();
 
-            var netServer = new NetServer(packetManager);
+            var netServer = new NetServer();
 
-            var serverManager = new ConsoleServerManager(netServer, serverSettings, packetManager, consoleLogger);
+            var serverManager = new ConsoleServerManager(netServer, serverSettings, consoleLogger);
             serverManager.Initialize();
             serverManager.Start((int)port);
 

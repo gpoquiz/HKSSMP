@@ -16,7 +16,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <InternalsVisibleTo Include="HkmpServer" />
+        <InternalsVisibleTo Include="HkssmpServer" />
     </ItemGroup>
 
     <ItemGroup>
