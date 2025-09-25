@@ -64,7 +64,7 @@ internal class ButtonComponent : Component, IButtonComponent {
         new Vector2(DefaultWidth, DefaultHeight),
         text,
         TextureManager.ButtonBg,
-        FontManager.UIFontRegular,
+        Resources.FontManager.UIFontRegular,
         UiManager.NormalFontSize) {
     }
 

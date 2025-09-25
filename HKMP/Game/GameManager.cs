@@ -22,7 +22,7 @@ internal class GameManager {
     public GameManager(ModSettings modSettings) {
         ThreadUtil.Instantiate();
 
-        FontManager.LoadFonts();
+        Hkmp.Ui.Resources.FontManager.LoadFonts();
         TextureManager.LoadTextures();
 
 

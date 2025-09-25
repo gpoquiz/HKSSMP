@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Hkmp.Ui.Resources;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -69,7 +69,7 @@ internal class InputComponent : Component, IInputComponent {
         defaultValue,
         placeholderText,
         TextureManager.InputFieldBg,
-        FontManager.UIFontRegular,
+        Resources.FontManager.UIFontRegular,
         UiManager.NormalFontSize,
         characterLimit,
         characterValidation,

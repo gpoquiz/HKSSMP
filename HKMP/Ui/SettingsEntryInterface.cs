@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using Hkmp.Ui.Component;
 using Hkmp.Ui.Resources;
@@ -107,7 +107,7 @@ internal class SettingsEntryInterface {
                 currentValue.ToString(),
                 "",
                 TextureManager.InputFieldBg,
-                FontManager.UIFontRegular,
+                Resources.FontManager.UIFontRegular,
                 UiManager.NormalFontSize,
                 0,
                 InputField.CharacterValidation.Integer

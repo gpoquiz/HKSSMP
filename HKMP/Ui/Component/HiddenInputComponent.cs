@@ -38,7 +38,7 @@ internal class HiddenInputComponent : InputComponent {
         defaultValue,
         placeholderText,
         TextureManager.InputFieldBg,
-        FontManager.UIFontRegular,
+        Resources.FontManager.UIFontRegular,
         fontSize,
         characterValidation
     ) {

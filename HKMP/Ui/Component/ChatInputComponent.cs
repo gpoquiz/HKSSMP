@@ -35,7 +35,7 @@ internal class ChatInputComponent : InputComponent {
         "",
         "",
         TextureManager.InputFieldBg,
-        FontManager.UIFontRegular,
+        Resources.FontManager.UIFontRegular,
         fontSize
     ) {
         Text.alignment = TextAnchor.MiddleLeft;

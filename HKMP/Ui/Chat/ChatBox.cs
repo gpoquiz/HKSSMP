@@ -132,7 +132,7 @@ internal class ChatBox : IChatBox {
         // Calculate these values beforehand so we can use them for each message
         MessageSize = new Vector2(ChatWidth + TextMargin, MessageHeight);
         _textGenSettings = new TextGenerationSettings {
-            font = FontManager.UIFontRegular,
+            font = Resources.FontManager.UIFontRegular,
             color = Color.white,
             fontSize = UiManager.ChatFontSize,
             lineSpacing = 1,

@@ -66,7 +66,7 @@ internal class ClientSettingsInterface {
             new Vector2(ButtonComponent.DefaultHeight, ButtonComponent.DefaultHeight),
             "",
             TextureManager.CloseButtonBg,
-            FontManager.UIFontRegular,
+            Resources.FontManager.UIFontRegular,
             UiManager.NormalFontSize
         );
         closeButton.SetOnPress(() => {
