@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace Hkmp.Animation.Effects;
 
@@ -10,6 +10,6 @@ internal class AltSlash : SlashBase {
     /// <inheritdoc/>
     public override void Play(GameObject playerObject, bool[] effectInfo) {
         // Call the base function with the correct parameters
-        Play(playerObject, effectInfo, HeroController.instance.slashAltPrefab, SlashType.Alt);
+        Play(playerObject, effectInfo, HeroController.instance.alternateSlash);
     }
 }

@@ -1,4 +1,4 @@
-﻿using Hkmp.Util;
+using Hkmp.Util;
 using UnityEngine;
 
 namespace Hkmp.Animation.Effects;
@@ -10,7 +10,6 @@ internal class WallSlide : AnimationEffect {
     /// <inheritdoc/>
     public override void Play(GameObject playerObject, bool[] effectInfo) {
         // Also play the crystal dash cancel animation, because it is cancelled when we do a wallslide
-        AnimationManager.CrystalDashChargeCancel.Play(playerObject, effectInfo);
 
         var playerEffects = playerObject.FindGameObjectInChildren("Effects");
 

@@ -43,21 +43,6 @@ internal static class AnimationManager {
     };
 
     /// <summary>
-    /// The animation effect for the focus. Stored since it needs to be called manually sometimes.
-    /// </summary>
-    private static readonly Focus Focus = new Focus();
-
-    /// <summary>
-    /// The animation effect for the focus burst. Stored since it needs to be called manually sometimes.
-    /// </summary>
-    private static readonly FocusBurst FocusBurst = new FocusBurst();
-
-    /// <summary>
-    /// The animation effect for the focus end. Stored since it needs to be called manually sometimes.
-    /// </summary>
-    public static readonly FocusEnd FocusEnd = new FocusEnd();
-
-    /// <summary>
     /// The animation effect for the nail art charge end. Stored since it needs to be called manually sometimes.
     /// </summary>
     public static readonly NailArtEnd NailArtEnd = new NailArtEnd();
@@ -289,16 +274,6 @@ internal static class AnimationManager {
             { AnimationClip.NABigSlash, new GreatSlash() },
             { AnimationClip.NADashSlash, new DashSlash() },
             { AnimationClip.Stun, new Stun() },
-            { AnimationClip.Focus, Focus },
-            { AnimationClip.FocusGet, FocusBurst },
-            { AnimationClip.FocusGetOnce, FocusEnd },
-            { AnimationClip.FocusEnd, FocusEnd },
-            { AnimationClip.SlugDown, Focus },
-            { AnimationClip.SlugBurst, FocusBurst },
-            { AnimationClip.SlugBurstS, FocusBurst }, // Shape of Unn + Spore Shroom
-            { AnimationClip.SlugBurstB, FocusBurst }, // Shape of Unn + Baldur Shell
-            { AnimationClip.SlugBurstBS, FocusBurst }, // Shape of Unn + Spore Shroom + Baldur Shell
-            { AnimationClip.SlugUp, FocusEnd },
             { AnimationClip.Dash, new Dash() },
             { AnimationClip.DashDown, new DashDown() },
             { AnimationClip.DashEnd, new DashEnd() },

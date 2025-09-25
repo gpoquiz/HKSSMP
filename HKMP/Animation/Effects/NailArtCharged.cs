@@ -1,4 +1,4 @@
-﻿using Hkmp.Util;
+using Hkmp.Util;
 using UnityEngine;
 
 namespace Hkmp.Animation.Effects;
@@ -36,17 +36,6 @@ internal class NailArtCharged : AnimationEffect {
 
         // Also play the animation
         artCharged.GetComponent<tk2dSpriteAnimator>().PlayFromFrame(0);
-
-        // Create a new art charge flash object
-        var artChargedFlashObject = HeroController.instance.artChargedFlash;
-        var artChargedFlash = Object.Instantiate(
-            artChargedFlashObject,
-            playerAttacks.transform
-        );
-        // Give it a name, so we can reference it when it needs to be destroyed
-        artChargedFlash.name = "Nail Art Charged Flash";
-        // Set is to active to activate the flash
-        artChargedFlash.SetActive(true);
 
         // Get a new audio source object relative to the player object
         var artChargedAudioObject = AudioUtil.GetAudioSourceObject(playerAttacks);

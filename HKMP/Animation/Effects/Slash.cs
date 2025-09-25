@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace Hkmp.Animation.Effects;
 
@@ -9,6 +9,6 @@ internal class Slash : SlashBase {
     /// <inheritdoc/>
     public override void Play(GameObject playerObject, bool[] effectInfo) {
         // Call the base function with the correct parameters
-        Play(playerObject, effectInfo, HeroController.instance.slashPrefab, SlashType.Normal);
+        Play(playerObject, effectInfo, HeroController.instance.normalSlash);
     }
 }

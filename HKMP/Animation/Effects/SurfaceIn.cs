@@ -9,7 +9,6 @@ namespace Hkmp.Animation.Effects;
 internal class SurfaceIn : AnimationEffect {
     /// <inheritdoc />
     public override void Play(GameObject playerObject, bool[] effectInfo) {
-        CycloneSlashEnd.RemoveCycloneSlash(playerObject);
 
         // Get the player spells object
         var playerSpells = playerObject.FindGameObjectInChildren("Spells");
